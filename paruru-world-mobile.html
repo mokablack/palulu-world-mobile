@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ぱるるワールドMobile</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            touch-action: manipulation;
+            padding: 10px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        /* Firebase設定セクション */
+        .firebase-config {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .firebase-config.configured {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+        
+        .firebase-config h3 {
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .firebase-config.configured h3 {
+            color: #155724;
+        }
+        
+        .firebase-config input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .firebase-config button {
+            margin-top: 10px;
+        }
+        
+        /* モード選択 */
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .mode-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .mode-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* ボード */
+        .board {
+            display: grid;
+            gap: 8px;
+            margin: 20px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+        
+        .tile {
+            aspect-ratio: 1;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            padding: 2px;
+        }
+        
+        .tile:active {
+            transform: scale(0.95);
+        }
+        
+        .tile-normal { background: #fff; color: #333; }
+        .tile-forward { background: #4ade80; color: white; }
+        .tile-backward { background: #f87171; color: white; }
+        .tile-item { background: #fbbf24; color: white; }
+        .tile-event { background: #60a5fa; color: white; }
+        .tile-start { background: #10b981; color: white; }
+        .tile-goal { background: #ef4444; color: white; }
+        
+        .tile-number {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 9px;
+            opacity: 0.7;
+        }
+        
+        .tile-label {
+            text-align: center;
+            font-size: 10px;
+            line-height: 1.2;
+        }
+        
+        .player-marker {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid white;
+            position: absolute;
+            bottom: 2px;
+            animation: bounce 0.5s;
+        }
+        
+        .player-marker.p1 { background: #3b82f6; right: 2px; }
+        .player-marker.p2 { background: #ef4444; right: 20px; }
+        .player-marker.p3 { background: #10b981; bottom: 20px; right: 2px; }
+        .player-marker.p4 { background: #fbbf24; bottom: 20px; right: 20px; }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        /* パレット */
+        .tile-palette {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+            gap: 8px;
+            margin: 15px 0;
+        }
+        
+        .palette-tile {
+            padding: 10px 5px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 11px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .palette-tile.selected {
+            border-color: #667eea;
+            transform: scale(1.05);
+        }
+        
+        /* コントロール */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* サイコロ */
+        .dice-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .dice {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border: 3px solid #667eea;
+            border-radius: 15px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px auto;
+        }
+        
+        .dice:active {
+            transform: scale(0.95) rotate(20deg);
+        }
+        
+        .dice.rolling {
+            animation: roll 0.5s;
+        }
+        
+        @keyframes roll {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(90deg); }
+            50% { transform: rotate(180deg); }
+            75% { transform: rotate(270deg); }
+        }
+        
+        /* ステータス */
+        .status {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        
+        .current-player-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        /* モーダル */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .modal-text {
+            font-size: 16px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        /* インベントリ */
+        .inventory {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        
+        .inventory-item {
+            padding: 8px 12px;
+            background: #fbbf24;
+            color: white;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        /* グリッドサイズ選択 */
+        .grid-size-selector {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            align-items: center;
+        }
+        
+        .grid-size-selector label {
+            font-weight: bold;
+        }
+        
+        .grid-size-selector input {
+            width: 60px;
+            padding: 8px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        /* リスト */
+        .item-list, .event-list {
+            margin: 15px 0;
+        }
+        
+        .list-item {
+            background: #f9fafb;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .list-item input[type="checkbox"],
+        .list-item input[type="radio"] {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .list-item-content {
+            flex: 1;
+        }
+        
+        .list-item-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .list-item-desc {
+            font-size: 13px;
+            color: #6b7280;
+        }
+        
+        /* プレイヤー設定 */
+        .player-setup {
+            margin: 15px 0;
+        }
+        
+        .player-input {
+            margin: 10px 0;
+        }
+        
+        .player-input label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .player-input input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        /* ルーム */
+        .room-id-display {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 15px 0;
+        }
+        
+        .room-id-display .room-id {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            letter-spacing: 4px;
+            margin: 10px 0;
+        }
+        
+        .players-waiting {
+            margin: 15px 0;
+        }
+        
+        .waiting-player {
+            background: #e0e7ff;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        
+        .connection-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* ユーティリティ */
+        .hidden {
+            display: none !important;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .mt-20 {
+            margin-top: 20px;
+        }
+        
+        /* ナビゲーション */
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-btn {
+            flex: 1;
+            padding: 10px;
+            background: #e5e7eb;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .nav-btn:active {
+            background: #d1d5db;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎲 ぱるるワールドMobile</h1>
+        </div>
+        
+        <!-- Firebase設定セクション -->
+        <div id="firebaseConfigSection" class="firebase-config">
+            <h3>⚙️ Firebase設定 (オンラインマルチプレイ用)</h3>
+            <div id="firebaseConfigForm">
+                <input type="text" id="apiKey" placeholder="API Key">
+                <input type="text" id="databaseURL" placeholder="Database URL (例: https://xxx.firebaseio.com)">
+                <button class="btn btn-primary" onclick="saveFirebaseConfig()">設定を保存</button>
+            </div>
+            <div id="firebaseConfigured" class="hidden">
+                <p>✓ Firebase設定完了</p>
+                <button class="btn btn-secondary" onclick="clearFirebaseConfig()">設定をクリア</button>
+            </div>
+        </div>
+        
+        <!-- メイン画面コンテナ -->
+        <div id="mainScreen">
+            <!-- モード選択 -->
+            <div class="mode-selector">
+                <button class="mode-btn active" id="editorBtn" onclick="switchMode('editor')">エディター</button>
+                <button class="mode-btn" id="itemsBtn" onclick="switchMode('items')">アイテム</button>
+                <button class="mode-btn" id="eventsBtn" onclick="switchMode('events')">イベント</button>
+                <button class="mode-btn" id="playBtn" onclick="switchMode('playMode')">プレイ</button>
+            </div>
+            
+            <!-- エディターモード -->
+            <div id="editorMode">
+                <div class="grid-size-selector">
+                    <label>グリッドサイズ:</label>
+                    <input type="number" min="3" max="10" value="5" id="rowsInput" onchange="updateGridSize()">
+                    <span>×</span>
+                    <input type="number" min="3" max="10" value="5" id="colsInput" onchange="updateGridSize()">
+                </div>
+                
+                <div class="tile-palette" id="palette"></div>
+                
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="generateRandomStage()">🎲 ランダム生成</button>
+                    <button class="btn btn-primary" onclick="saveStage()">💾 ステージを保存</button>
+                    <button class="btn btn-secondary" onclick="loadStage()">📂 ステージを読み込み</button>
+                    <button class="btn btn-secondary" onclick="resetBoard()">🔄 リセット</button>
+                </div>
+            </div>
+            
+            <!-- アイテム管理モード -->
+            <div id="itemsMode" class="hidden">
+                <h2>アイテム管理</h2>
+                <div class="item-list" id="itemList"></div>
+                <button class="btn btn-secondary mt-20" onclick="switchMode('editor')">← エディターに戻る</button>
+            </div>
+            
+            <!-- イベント管理モード -->
+            <div id="eventsMode" class="hidden">
+                <h2>イベントを選択</h2>
+                <div class="event-list" id="eventList"></div>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="confirmEventSelection()">決定</button>
+                    <button class="btn btn-secondary" onclick="cancelEventSelection()">キャンセル</button>
+                </div>
+            </div>
+            
+            <!-- プレイモード選択 -->
+            <div id="playModeSelect" class="hidden">
+                <h2 class="text-center">プレイモードを選択</h2>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="startSinglePlay()">シングルプレイ</button>
+                    <button class="btn btn-primary" onclick="switchMode('localMultiSetup')">ローカルマルチ</button>
+                    <button class="btn btn-primary" id="onlineMultiBtn" onclick="switchMode('onlineMultiSelect')">オンラインマルチ</button>
+                    <button class="btn btn-secondary" onclick="switchMode('editor')">← 戻る</button>
+                </div>
+            </div>
+            
+            <!-- ローカルマルチ設定 -->
+            <div id="localMultiSetup" class="hidden">
+                <h2>ローカルマルチプレイ設定</h2>
+                <div class="player-setup">
+                    <label>プレイヤー人数:</label>
+                    <select id="playerCount" onchange="updatePlayerInputs()" style="width:100%; padding:10px; border-radius:8px; border:2px solid #667eea; font-size:16px;">
+                        <option value="2">2人</option>
+                        <option value="3">3人</option>
+                        <option value="4">4人</option>
+                    </select>
+                    <div id="playerInputs" class="mt-20"></div>
+                </div>
+                <div class="controls mt-20">
+                    <button class="btn btn-primary" onclick="startLocalMulti()">ゲーム開始</button>
+                    <button class="btn btn-secondary" onclick="switchMode('playMode')">← 戻る</button>
+                </div>
+            </div>
+            
+            <!-- オンラインマルチ選択 -->
+            <div id="onlineMultiSelect" class="hidden">
+                <h2>オンラインマルチプレイ</h2>
+                <div class="controls">
+                    <button class="btn btn-primary" onclick="createOnlineRoom()">ルームを作成</button>
+                    <button class="btn btn-primary" onclick="switchMode('joinRoom')">ルームに参加</button>
+                    <button class="btn btn-secondary" onclick="switchMode('playMode')">← 戻る</button>
+                </div>
+            </div>
+            
+            <!-- ルーム作成待機 -->
+            <div id="roomWaiting" class="hidden">
+                <h2>ルーム待機中</h2>
+                <div class="room-id-display">
+                    <p>ルームID</p>
+                    <div class="room-id" id="displayRoomId"></div>
+                    <p style="font-size:14px; color:#666;">このIDを他のプレイヤーに共有してください</p>
+                </div>
+                <div class="players-waiting">
+                    <h3>参加プレイヤー</h3>
+                    <div id="waitingPlayersList"></div>
+                </div>
+                <div class="controls mt-20">
+                    <button class="btn btn-primary" id="startOnlineGameBtn" onclick="startOnlineGame()" disabled>ゲーム開始 (2人以上で有効)</button>
+                    <button class="btn btn-secondary" onclick="leaveRoom()">ルームを退出</button>
+                </div>
+            </div>
+            
+            <!-- ルーム参加 -->
+            <div id="joinRoom" class="hidden">
+                <h2>ルームに参加</h2>
+                <div class="player-input">
+                    <label>ルームID</label>
+                    <input type="text" id="joinRoomId" placeholder="9桁のルームID">
+                </div>
+                <div class="player-input">
+                    <label>プレイヤー名</label>
+                    <input type="text" id="joinPlayerName" placeholder="あなたの名前">
+                </div>
+                <div class="controls mt-20">
+                    <button class="btn btn-primary" onclick="joinOnlineRoom()">参加する</button>
+                    <button class="btn btn-secondary" onclick="switchMode('onlineMultiSelect')">← 戻る</button>
+                </div>
+            </div>
+            
+            <!-- ゲームプレイ画面 -->
+            <div id="playScreen" class="hidden">
+                <div id="currentPlayerBanner" class="current-player-banner hidden"></div>
+                
+                <div class="status" id="status"></div>
+                
+                <div id="inventoryContainer" class="hidden">
+                    <strong>アイテム:</strong>
+                    <div class="inventory" id="inventory"></div>
+                </div>
+                
+                <div class="dice-container">
+                    <div class="dice" id="dice" onclick="rollDice()">1</div>
+                    <div>タップしてサイコロを振る</div>
+                </div>
+                
+                <button class="btn btn-secondary mt-20" onclick="exitGame()">ゲームを終了</button>
+            </div>
+            
+            <!-- ゲームボード (全モードで表示) -->
+            <div class="board" id="board"></div>
+        </div>
+    </div>
+    
+    <!-- モーダル -->
+    <div class="modal" id="modal">
+        <div class="modal-content" id="modalContent"></div>
+    </div>
+
+    <script>
+        // ========== データ定義 ==========
+        const TILE_TYPES = {
+            NORMAL: { id: 'normal', name: '通常', color: 'tile-normal', effect: null },
+            FORWARD: { id: 'forward', name: '進む', color: 'tile-forward', effect: { type: 'move', value: 3 } },
+            BACKWARD: { id: 'backward', name: '戻る', color: 'tile-backward', effect: { type: 'move', value: -3 } },
+            ITEM: { id: 'item', name: 'アイテム', color: 'tile-item', effect: { type: 'item' } },
+            EVENT: { id: 'event', name: 'イベント', color: 'tile-event', effect: { type: 'event' } },
+            START: { id: 'start', name: 'スタート', color: 'tile-start', effect: null },
+            GOAL: { id: 'goal', name: 'ゴール', color: 'tile-goal', effect: null }
+        };
+        
+        const ITEMS = [
+            { id: 'boots', name: '魔法の靴', effect: '次のターン移動量+2' },
+            { id: 'shield', name: '盾', effect: '戻るマスの効果を1回無効化' },
+            { id: 'binoculars', name: '双眼鏡', effect: 'サイコロを2回振り好きな目を選べる' },
+            { id: 'timestop', name: 'タイムストップ', effect: '次の順番のプレイヤーが1ターン休み' }
+        ];
+        
+        const EVENTS = [
+            { id: 'merchant', title: '怪しい商人', text: '怪しい商人に出会った。アイテムをもらった！', effect: 'item' },
+            { id: 'wind', title: '突風', text: '突風が吹いた！2マス戻される...', effect: -2 },
+            { id: 'goddess', title: '幸運の女神', text: '幸運の女神が微笑んだ！もう一度サイコロを振れる！', effect: 'extraTurn' },
+            { id: 'pit', title: '落とし穴', text: '落とし穴に落ちた！1回休み...', effect: 'skip' },
+            { id: 'tailwind', title: '追い風', text: '追い風に乗った！3マス前進する', effect: 3 },
+            { id: 'storm', title: '嵐', text: '嵐が来た！自分以外の全プレイヤーが1マス後退する', effect: 'storm' }
+        ];
+        
+        // ========== ゲーム状態 ==========
+        let gameState = {
+            mode: 'editor',
+            gridSize: { rows: 5, cols: 5 },
+            board: [],
+            selectedTileType: TILE_TYPES.NORMAL,
+            enabledItems: {},
+            selectedEventForTile: null,
+            editingTileIndex: null,
+            
+            // プレイ関連
+            playMode: null, // 'single', 'local', 'online'
+            players: [],
+            currentPlayerIndex: 0,
+            diceValue: 1,
+            isRolling: false,
+            
+            // Firebase関連
+            firebaseConfig: null,
+            firebaseInitialized: false,
+            roomId: null,
+            playerId: null,
+            isHost: false,
+            firebaseRefs: {}
+        };
+        
+        // ========== 初期化 ==========
+        function init() {
+            loadFirebaseConfig();
+            loadEnabledItems();
+            initializeBoard();
+            renderPalette();
+            renderItemList();
+            renderEventList();
+            renderBoard();
+            updatePlayerInputs();
+        }
+        
+        // ========== Firebase設定 ==========
+        function loadFirebaseConfig() {
+            const config = localStorage.getItem('firebaseConfig');
+            if (config) {
+                gameState.firebaseConfig = JSON.parse(config);
+                document.getElementById('firebaseConfigForm').classList.add('hidden');
+                document.getElementById('firebaseConfigured').classList.remove('hidden');
+                document.getElementById('firebaseConfigSection').classList.add('configured');
+                document.getElementById('onlineMultiBtn').disabled = false;
+                
+                // Firebaseを初期化
+                initializeFirebase();
+            } else {
+                document.getElementById('onlineMultiBtn').disabled = true;
+            }
+        }
+        
+        function saveFirebaseConfig() {
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const databaseURL = document.getElementById('databaseURL').value.trim();
+            
+            if (!apiKey || !databaseURL) {
+                showModal('info', 'API KeyとDatabase URLの両方を入力してください');
+                return;
+            }
+            
+            const config = { apiKey, databaseURL };
+            localStorage.setItem('firebaseConfig', JSON.stringify(config));
+            gameState.firebaseConfig = config;
+            
+            document.getElementById('firebaseConfigForm').classList.add('hidden');
+            document.getElementById('firebaseConfigured').classList.remove('hidden');
+            document.getElementById('firebaseConfigSection').classList.add('configured');
+            document.getElementById('onlineMultiBtn').disabled = false;
+            
+            initializeFirebase();
+            showModal('info', 'Firebase設定を保存しました！\nオンラインマルチプレイが利用可能です。');
+        }
+        
+        function clearFirebaseConfig() {
+            if (!confirm('Firebase設定をクリアしますか？')) return;
+            
+            localStorage.removeItem('firebaseConfig');
+            gameState.firebaseConfig = null;
+            gameState.firebaseInitialized = false;
+            
+            document.getElementById('apiKey').value = '';
+            document.getElementById('databaseURL').value = '';
+            document.getElementById('firebaseConfigForm').classList.remove('hidden');
+            document.getElementById('firebaseConfigured').classList.add('hidden');
+            document.getElementById('firebaseConfigSection').classList.remove('configured');
+            document.getElementById('onlineMultiBtn').disabled = true;
+            
+            showModal('info', 'Firebase設定をクリアしました');
+        }
+        
+        function initializeFirebase() {
+            if (!gameState.firebaseConfig || gameState.firebaseInitialized) return;
+            
+            // TODO: 実際のFirebase初期化コード
+            // firebase.initializeApp(gameState.firebaseConfig);
+            // gameState.firebaseInitialized = true;
+            
+            console.log('Firebase初期化準備完了:', gameState.firebaseConfig);
+        }
+        
+        // ========== ボード管理 ==========
+        function initializeBoard() {
+            const totalTiles = gameState.gridSize.rows * gameState.gridSize.cols;
+            gameState.board = Array(totalTiles).fill(null).map((_, index) => {
+                if (index === 0) return { ...TILE_TYPES.START };
+                if (index === totalTiles - 1) return { ...TILE_TYPES.GOAL };
+                return { ...TILE_TYPES.NORMAL };
+            });
+        }
+        
+        function updateGridSize() {
+            gameState.gridSize.rows = parseInt(document.getElementById('rowsInput').value) || 3;
+            gameState.gridSize.cols = parseInt(document.getElementById('colsInput').value) || 3;
+            initializeBoard();
+            renderBoard();
+        }
+        
+        function resetBoard() {
+            if (!confirm('ボードをリセットしますか？')) return;
+            initializeBoard();
+            renderBoard();
+        }
+        
+        function generateRandomStage() {
+            if (!confirm('ランダムなステージを生成しますか？\n現在のステージは失われます。')) return;
+            
+            const totalTiles = gameState.gridSize.rows * gameState.gridSize.cols;
+            const editableTiles = totalTiles - 2; // スタートとゴールを除く
+            
+            // 初期化
+            initializeBoard();
+            
+            // 各マスタイプの出現確率を設定
+            const tileDistribution = [
+                { type: TILE_TYPES.NORMAL, weight: 30 },      // 30%
+                { type: TILE_TYPES.FORWARD, weight: 15 },     // 15%
+                { type: TILE_TYPES.BACKWARD, weight: 15 },    // 15%
+                { type: TILE_TYPES.ITEM, weight: 20 },        // 20%
+                { type: TILE_TYPES.EVENT, weight: 20 }        // 20%
+            ];
+            
+            // 重み付きランダム選択のための累積配列を作成
+            const cumulativeWeights = [];
+            let sum = 0;
+            tileDistribution.forEach(item => {
+                sum += item.weight;
+                cumulativeWeights.push({ type: item.type, cumulative: sum });
+            });
+            
+            // スタートとゴールを除く各マスをランダムに設定
+            for (let i = 1; i < totalTiles - 1; i++) {
+                const random = Math.random() * sum;
+                const selected = cumulativeWeights.find(item => random < item.cumulative);
+                const tileType = selected.type;
+                
+                if (tileType.id === 'forward' || tileType.id === 'backward') {
+                    // 移動マス: ランダムに1-5の移動量を設定
+                    const moveValue = Math.floor(Math.random() * 5) + 1; // 1-5
+                    gameState.board[i] = {
+                        ...tileType,
+                        effect: {
+                            type: 'move',
+                            value: tileType.id === 'forward' ? moveValue : -moveValue
+                        }
+                    };
+                } else if (tileType.id === 'event') {
+                    // イベントマス: ランダムにイベントを割り当て
+                    const randomEvent = EVENTS[Math.floor(Math.random() * EVENTS.length)];
+                    gameState.board[i] = {
+                        ...tileType,
+                        effect: {
+                            type: 'event',
+                            eventId: randomEvent.id,
+                            eventTitle: randomEvent.title,
+                            eventText: randomEvent.text,
+                            eventEffect: randomEvent.effect
+                        }
+                    };
+                } else {
+                    // その他のマス: そのまま配置
+                    gameState.board[i] = { ...tileType };
+                }
+            }
+            
+            renderBoard();
+            showModal('info', `ランダムステージを生成しました！\n\nマス構成:\n- 通常: 約30%\n- 進む/戻る: 約30%\n- アイテム: 約20%\n- イベント: 約20%`);
+        }
+        
+        function renderBoard() {
+            const board = document.getElementById('board');
+            board.style.gridTemplateColumns = `repeat(${gameState.gridSize.cols}, 1fr)`;
+            board.innerHTML = '';
+            
+            gameState.board.forEach((tile, index) => {
+                const div = document.createElement('div');
+                div.className = `tile ${tile.color}`;
+                
+                let label = tile.name;
+                if (tile.effect?.type === 'move' && tile.effect.value) {
+                    label = tile.effect.value > 0 ? `+${tile.effect.value}` : `${tile.effect.value}`;
+                } else if (tile.effect?.eventTitle) {
+                    label = tile.effect.eventTitle;
+                }
+                
+                div.innerHTML = `
+                    <div class="tile-number">${index + 1}</div>
+                    <div class="tile-label">${label}</div>
+                `;
+                
+                // プレイヤーマーカー表示
+                if (gameState.mode === 'play') {
+                    gameState.players.forEach((player, pIndex) => {
+                        if (player.position === index) {
+                            const marker = document.createElement('div');
+                            marker.className = `player-marker p${pIndex + 1}`;
+                            div.appendChild(marker);
+                        }
+                    });
+                }
+                
+                if (gameState.mode === 'editor') {
+                    div.onclick = () => handleTileClick(index);
+                }
+                
+                board.appendChild(div);
+            });
+        }
+        
+        function handleTileClick(index) {
+            if (index === 0 || index === gameState.board.length - 1) return;
+            
+            const selectedType = gameState.selectedTileType;
+            
+            if (selectedType.id === 'forward' || selectedType.id === 'backward') {
+                showMoveValueDialog(index, selectedType);
+            } else if (selectedType.id === 'event') {
+                gameState.editingTileIndex = index;
+                switchMode('events');
+            } else {
+                gameState.board[index] = { ...selectedType };
+                renderBoard();
+            }
+        }
+        
+        function showMoveValueDialog(index, tileType) {
+            const value = prompt(`移動量を入力してください (1-10マス):`, '3');
+            if (value === null) return;
+            
+            const num = parseInt(value);
+            if (isNaN(num) || num < 1 || num > 10) {
+                alert('1から10の数値を入力してください');
+                return;
+            }
+            
+            gameState.board[index] = {
+                ...tileType,
+                effect: {
+                    type: 'move',
+                    value: tileType.id === 'forward' ? num : -num
+                }
+            };
+            renderBoard();
+        }
+        
+        // ========== パレット ==========
+        function renderPalette() {
+            const palette = document.getElementById('palette');
+            palette.innerHTML = '';
+            
+            Object.values(TILE_TYPES).filter(t => t.id !== 'start' && t.id !== 'goal').forEach(tileType => {
+                const div = document.createElement('div');
+                div.className = `palette-tile ${tileType.color} ${tileType.id === gameState.selectedTileType.id ? 'selected' : ''}`;
+                div.textContent = tileType.name;
+                div.onclick = () => {
+                    gameState.selectedTileType = tileType;
+                    renderPalette();
+                };
+                palette.appendChild(div);
+            });
+        }
+        
+        // ========== アイテム管理 ==========
+        function loadEnabledItems() {
+            const saved = localStorage.getItem('enabledItems');
+            if (saved) {
+                gameState.enabledItems = JSON.parse(saved);
+            } else {
+                ITEMS.forEach(item => {
+                    gameState.enabledItems[item.id] = true;
+                });
+            }
+        }
+        
+        function saveEnabledItems() {
+            localStorage.setItem('enabledItems', JSON.stringify(gameState.enabledItems));
+        }
+        
+        function renderItemList() {
+            const list = document.getElementById('itemList');
+            list.innerHTML = '';
+            
+            ITEMS.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <input type="checkbox" id="item-${item.id}" ${gameState.enabledItems[item.id] ? 'checked' : ''} onchange="toggleItem('${item.id}')">
+                    <div class="list-item-content">
+                        <div class="list-item-title">${item.name}</div>
+                        <div class="list-item-desc">${item.effect}</div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+        
+        function toggleItem(itemId) {
+            gameState.enabledItems[itemId] = document.getElementById(`item-${itemId}`).checked;
+            saveEnabledItems();
+        }
+        
+        // ========== イベント管理 ==========
+        function renderEventList() {
+            const list = document.getElementById('eventList');
+            list.innerHTML = '';
+            
+            EVENTS.forEach(event => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                div.innerHTML = `
+                    <input type="radio" name="eventSelect" id="event-${event.id}" value="${event.id}">
+                    <div class="list-item-content">
+                        <div class="list-item-title">${event.title}</div>
+                        <div class="list-item-desc">${event.text}</div>
+                    </div>
+                `;
+                list.appendChild(div);
+            });
+        }
+        
+        function confirmEventSelection() {
+            const selected = document.querySelector('input[name="eventSelect"]:checked');
+            if (!selected) {
+                alert('イベントを選択してください');
+                return;
+            }
+            
+            const event = EVENTS.find(e => e.id === selected.value);
+            const index = gameState.editingTileIndex;
+            
+            gameState.board[index] = {
+                ...TILE_TYPES.EVENT,
+                effect: {
+                    type: 'event',
+                    eventId: event.id,
+                    eventTitle: event.title,
+                    eventText: event.text,
+                    eventEffect: event.effect
+                }
+            };
+            
+            gameState.editingTileIndex = null;
+            switchMode('editor');
+            renderBoard();
+        }
+        
+        function cancelEventSelection() {
+            gameState.editingTileIndex = null;
+            switchMode('editor');
+        }
+        
+        // ========== ステージ保存/読み込み ==========
+        function saveStage() {
+            const stageData = {
+                gridSize: gameState.gridSize,
+                board: gameState.board
+            };
+            localStorage.setItem('stageData', JSON.stringify(stageData));
+            showModal('info', 'ステージを保存しました！');
+        }
+        
+        function loadStage() {
+            const saved = localStorage.getItem('stageData');
+            if (!saved) {
+                alert('保存されたステージがありません');
+                return;
+            }
+            
+            const stageData = JSON.parse(saved);
+            gameState.gridSize = stageData.gridSize;
+            gameState.board = stageData.board;
+            
+            document.getElementById('rowsInput').value = gameState.gridSize.rows;
+            document.getElementById('colsInput').value = gameState.gridSize.cols;
+            
+            renderBoard();
+            showModal('info', 'ステージを読み込みました！');
+        }
+        
+        // ========== モード切り替え ==========
+        function switchMode(mode) {
+            gameState.mode = mode;
+            
+            // モードボタンの状態更新
+            document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
+            
+            // 全セクションを非表示
+            document.getElementById('editorMode').classList.add('hidden');
+            document.getElementById('itemsMode').classList.add('hidden');
+            document.getElementById('eventsMode').classList.add('hidden');
+            document.getElementById('playModeSelect').classList.add('hidden');
+            document.getElementById('localMultiSetup').classList.add('hidden');
+            document.getElementById('onlineMultiSelect').classList.add('hidden');
+            document.getElementById('roomWaiting').classList.add('hidden');
+            document.getElementById('joinRoom').classList.add('hidden');
+            document.getElementById('playScreen').classList.add('hidden');
+            
+            // 選択されたモードを表示
+            if (mode === 'editor') {
+                document.getElementById('editorBtn').classList.add('active');
+                document.getElementById('editorMode').classList.remove('hidden');
+            } else if (mode === 'items') {
+                document.getElementById('itemsBtn').classList.add('active');
+                document.getElementById('itemsMode').classList.remove('hidden');
+            } else if (mode === 'events') {
+                document.getElementById('eventsBtn').classList.add('active');
+                document.getElementById('eventsMode').classList.remove('hidden');
+            } else if (mode === 'playMode') {
+                document.getElementById('playBtn').classList.add('active');
+                document.getElementById('playModeSelect').classList.remove('hidden');
+            } else if (mode === 'localMultiSetup') {
+                document.getElementById('localMultiSetup').classList.remove('hidden');
+            } else if (mode === 'onlineMultiSelect') {
+                document.getElementById('onlineMultiSelect').classList.remove('hidden');
+            } else if (mode === 'roomWaiting') {
+                document.getElementById('roomWaiting').classList.remove('hidden');
+            } else if (mode === 'joinRoom') {
+                document.getElementById('joinRoom').classList.remove('hidden');
+            } else if (mode === 'play') {
+                document.getElementById('playScreen').classList.remove('hidden');
+            }
+            
+            renderBoard();
+        }
+        
+        // ========== プレイヤー設定 ==========
+        function updatePlayerInputs() {
+            const count = parseInt(document.getElementById('playerCount').value);
+            const container = document.getElementById('playerInputs');
+            container.innerHTML = '';
+            
+            for (let i = 0; i < count; i++) {
+                const div = document.createElement('div');
+                div.className = 'player-input';
+                div.innerHTML = `
+                    <label>プレイヤー${i + 1}の名前</label>
+                    <input type="text" id="playerName${i}" placeholder="プレイヤー${i + 1}" value="プレイヤー${i + 1}">
+                `;
+                container.appendChild(div);
+            }
+        }
+        
+        // ========== ゲーム開始 ==========
+        function startSinglePlay() {
+            gameState.playMode = 'single';
+            gameState.players = [{
+                name: 'プレイヤー',
+                position: 0,
+                items: [],
+                skipTurn: false
+            }];
+            gameState.currentPlayerIndex = 0;
+            switchMode('play');
+            updateStatus();
+        }
+        
+        function startLocalMulti() {
+            const count = parseInt(document.getElementById('playerCount').value);
+            gameState.playMode = 'local';
+            gameState.players = [];
+            
+            for (let i = 0; i < count; i++) {
+                const name = document.getElementById(`playerName${i}`).value || `プレイヤー${i + 1}`;
+                gameState.players.push({
+                    name,
+                    position: 0,
+                    items: [],
+                    skipTurn: false
+                });
+            }
+            
+            gameState.currentPlayerIndex = 0;
+            switchMode('play');
+            updateStatus();
+        }
+        
+        // ========== オンラインマルチ (スタブ実装) ==========
+        function createOnlineRoom() {
+            if (!gameState.firebaseConfig) {
+                showModal('info', 'Firebase設定が必要です。\n画面上部の設定セクションから設定してください。');
+                return;
+            }
+            
+            // TODO: 実際のFirebase実装
+            // 現在はダミー実装
+            gameState.roomId = generateRoomId();
+            gameState.isHost = true;
+            gameState.playerId = 'player-' + Date.now();
+            
+            document.getElementById('displayRoomId').textContent = gameState.roomId;
+            switchMode('roomWaiting');
+            
+            // ダミーのプレイヤーリスト表示
+            updateWaitingPlayers([{ id: gameState.playerId, name: 'あなた (ホスト)', connected: true }]);
+            
+            showModal('info', 'ルームを作成しました！\n\n※注意: Firebase未設定のため、実際の通信は行われません。\nFirebase設定後に実際のオンラインマルチプレイが利用できます。');
+        }
+        
+        function joinOnlineRoom() {
+            const roomId = document.getElementById('joinRoomId').value.trim();
+            const playerName = document.getElementById('joinPlayerName').value.trim();
+            
+            if (!roomId || !playerName) {
+                alert('ルームIDとプレイヤー名を入力してください');
+                return;
+            }
+            
+            if (!gameState.firebaseConfig) {
+                showModal('info', 'Firebase設定が必要です。\n画面上部の設定セクションから設定してください。');
+                return;
+            }
+            
+            // TODO: 実際のFirebase実装
+            showModal('info', '※注意: Firebase未設定のため、実際のルーム参加は行われません。\nFirebase設定後に実際のオンラインマルチプレイが利用できます。');
+        }
+        
+        function updateWaitingPlayers(players) {
+            const list = document.getElementById('waitingPlayersList');
+            list.innerHTML = '';
+            
+            players.forEach(player => {
+                const div = document.createElement('div');
+                div.className = 'waiting-player';
+                div.innerHTML = `
+                    ${player.name}
+                    <span class="connection-status ${player.connected ? 'connected' : 'disconnected'}">
+                        ${player.connected ? '接続中' : '切断'}
+                    </span>
+                `;
+                list.appendChild(div);
+            });
+            
+            // 2人以上でゲーム開始ボタンを有効化
+            document.getElementById('startOnlineGameBtn').disabled = players.length < 2;
+        }
+        
+        function startOnlineGame() {
+            // TODO: 実際のFirebase実装
+            showModal('info', 'オンラインゲームを開始します\n(Firebase設定後に実装されます)');
+        }
+        
+        function leaveRoom() {
+            if (!confirm('ルームを退出しますか？')) return;
+            gameState.roomId = null;
+            gameState.isHost = false;
+            switchMode('onlineMultiSelect');
+        }
+        
+        function generateRoomId() {
+            const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+            let id = '';
+            for (let i = 0; i < 9; i++) {
+                id += chars[Math.floor(Math.random() * chars.length)];
+            }
+            return id;
+        }
+        
+        // ========== ゲームプレイ ==========
+        function rollDice() {
+            if (gameState.isRolling) return;
+            
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            if (currentPlayer.skipTurn) {
+                currentPlayer.skipTurn = false;
+                nextTurn();
+                showModal('info', '1回休みが解除されました');
+                return;
+            }
+            
+            gameState.isRolling = true;
+            const dice = document.getElementById('dice');
+            dice.classList.add('rolling');
+            
+            const result = Math.floor(Math.random() * 6) + 1;
+            
+            setTimeout(() => {
+                gameState.diceValue = result;
+                dice.textContent = result;
+                dice.classList.remove('rolling');
+                gameState.isRolling = false;
+                movePlayer(result);
+            }, 500);
+        }
+        
+        function movePlayer(steps) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            let newPosition = player.position + steps;
+            
+            if (newPosition >= gameState.board.length - 1) {
+                newPosition = gameState.board.length - 1;
+                player.position = newPosition;
+                renderBoard();
+                
+                setTimeout(() => {
+                    showModal('win', `${player.name}がゴール！\n\n所持アイテム: ${player.items.length}個`);
+                }, 500);
+                return;
+            }
+            
+            player.position = newPosition;
+            renderBoard();
+            updateStatus();
+            
+            setTimeout(() => {
+                executeTileEffect(gameState.board[newPosition]);
+            }, 600);
+        }
+        
+        function executeTileEffect(tile) {
+            if (!tile.effect) {
+                nextTurn();
+                return;
+            }
+            
+            const player = gameState.players[gameState.currentPlayerIndex];
+            
+            switch (tile.effect.type) {
+                case 'move':
+                    const moveValue = tile.effect.value;
+                    showModal('info', 
+                        moveValue > 0 ? `${Math.abs(moveValue)}マス進む！` : `${Math.abs(moveValue)}マス戻る...`,
+                        () => {
+                            let newPos = player.position + moveValue;
+                            if (newPos < 0) newPos = 0;
+                            if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+                            player.position = newPos;
+                            renderBoard();
+                            updateStatus();
+                            nextTurn();
+                        }
+                    );
+                    break;
+                    
+                case 'item':
+                    const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
+                    if (enabledItemsList.length === 0) {
+                        showModal('info', 'アイテムなし', () => nextTurn());
+                    } else {
+                        const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
+                        player.items.push(randomItem.name);
+                        showModal('info', `「${randomItem.name}」を手に入れた！`, () => {
+                            updateStatus();
+                            nextTurn();
+                        });
+                    }
+                    break;
+                    
+                case 'event':
+                    handleEvent(tile.effect);
+                    break;
+                    
+                default:
+                    nextTurn();
+            }
+        }
+        
+        function handleEvent(eventEffect) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            let callback = () => nextTurn();
+            
+            if (eventEffect.eventEffect === 'item') {
+                const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
+                if (enabledItemsList.length > 0) {
+                    const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
+                    player.items.push(randomItem.name);
+                }
+            } else if (eventEffect.eventEffect === 'extraTurn') {
+                callback = () => {
+                    showModal('info', 'もう一度サイコロを振れます！');
+                };
+            } else if (eventEffect.eventEffect === 'skip') {
+                player.skipTurn = true;
+            } else if (typeof eventEffect.eventEffect === 'number') {
+                callback = () => {
+                    let newPos = player.position + eventEffect.eventEffect;
+                    if (newPos < 0) newPos = 0;
+                    if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+                    player.position = newPos;
+                    renderBoard();
+                    updateStatus();
+                    nextTurn();
+                };
+            } else if (eventEffect.eventEffect === 'storm' && gameState.players.length > 1) {
+                callback = () => {
+                    gameState.players.forEach((p, i) => {
+                        if (i !== gameState.currentPlayerIndex) {
+                            p.position = Math.max(0, p.position - 1);
+                        }
+                    });
+                    renderBoard();
+                    updateStatus();
+                    nextTurn();
+                };
+            }
+            
+            showModal('info', eventEffect.eventText, callback);
+            updateStatus();
+        }
+        
+        function nextTurn() {
+            if (gameState.playMode === 'single') return;
+            
+            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+            updateStatus();
+        }
+        
+        function updateStatus() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const status = document.getElementById('status');
+            
+            status.innerHTML = `
+                <div class="status-item">
+                    <span>現在位置:</span>
+                    <strong>${player.position + 1} / ${gameState.board.length}</strong>
+                </div>
+                ${player.skipTurn ? '<div class="status-item" style="color: red;"><span>⚠️ 1回休み中</span></div>' : ''}
+            `;
+            
+            // マルチプレイ時は現在のプレイヤー表示
+            const banner = document.getElementById('currentPlayerBanner');
+            if (gameState.playMode !== 'single') {
+                banner.textContent = `${player.name}のターン`;
+                banner.classList.remove('hidden');
+            } else {
+                banner.classList.add('hidden');
+            }
+            
+            // アイテム表示
+            const inventoryContainer = document.getElementById('inventoryContainer');
+            const inventory = document.getElementById('inventory');
+            
+            if (player.items.length > 0) {
+                inventoryContainer.classList.remove('hidden');
+                inventory.innerHTML = player.items.map(item => 
+                    `<div class="inventory-item">${item}</div>`
+                ).join('');
+            } else {
+                inventoryContainer.classList.add('hidden');
+            }
+        }
+        
+        function exitGame() {
+            if (!confirm('ゲームを終了しますか？')) return;
+            switchMode('playMode');
+        }
+        
+        // ========== モーダル ==========
+        function showModal(type, text, callback) {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            
+            if (type === 'win') {
+                content.innerHTML = `
+                    <div class="modal-title">🎉 ゴール！</div>
+                    <div class="modal-text">${text}</div>
+                    <button class="btn btn-primary" onclick="closeModal(); switchMode('playMode')">終了</button>
+                `;
+            } else {
+                content.innerHTML = `
+                    <div class="modal-title">${type === 'info' ? 'お知らせ' : 'イベント発生！'}</div>
+                    <div class="modal-text">${text}</div>
+                    <button class="btn btn-primary" onclick="closeModal(); if (window.modalCallback) window.modalCallback()">OK</button>
+                `;
+                
+                if (callback) {
+                    window.modalCallback = callback;
+                }
+            }
+            
+            modal.classList.add('show');
+        }
+        
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+            window.modalCallback = null;
+        }
+        
+        // ========== 起動 ==========
+        init();
+    </script>
+</body>
+</html>
