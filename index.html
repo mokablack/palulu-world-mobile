@@ -726,7 +726,9 @@
             { id: 'goddess', title: '幸運の女神', text: '幸運の女神が微笑んだ！もう一度サイコロを振れる！', effect: 'extraTurn' },
             { id: 'pit', title: '落とし穴', text: '落とし穴に落ちた！1回休み...', effect: 'skip' },
             { id: 'tailwind', title: '追い風', text: '追い風に乗った！3マス前進する', effect: 3 },
-            { id: 'storm', title: '嵐', text: '嵐が来た！自分以外の全プレイヤーが1マス後退する', effect: 'storm' }
+            { id: 'storm', title: '嵐', text: '嵐が来た！自分以外の全プレイヤーが1マス後退する', effect: 'storm' },
+            { id: 'blackhole', title: 'ブラックホール', text: 'ブラックホールだ！気をつけろ！', effect: 'blackhole' },
+            { id: 'whitehole', title: 'ホワイトホール', text: 'ホワイトホールから吐き出された！', effect: 'whitehole' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -752,7 +754,12 @@
             roomId: null,
             playerId: null,
             isHost: false,
-            firebaseRefs: {}
+            firebaseRefs: {},
+
+            // アイテム効果フラグ
+            bootsActive: false,
+            shieldActive: false,
+            binocularsActive: false
         };
         
         // ========== 初期化 ==========
@@ -1312,7 +1319,7 @@
         // ========== ゲームプレイ ==========
         function rollDice() {
             if (gameState.isRolling) return;
-            
+
             const currentPlayer = gameState.players[gameState.currentPlayerIndex];
             if (currentPlayer.skipTurn) {
                 currentPlayer.skipTurn = false;
@@ -1320,20 +1327,133 @@
                 showModal('info', '1回休みが解除されました');
                 return;
             }
-            
+
+            // アイテムを持っている場合は使用確認を出す
+            if (currentPlayer.items.length > 0) {
+                promptItemUsage();
+            } else {
+                doRollDice();
+            }
+        }
+
+        function promptItemUsage() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+
+            const itemsHtml = player.items.map((itemId, index) => {
+                const itemData = ITEMS.find(i => i.id === itemId);
+                if (!itemData) return '';
+                return `
+                    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin:6px 0;text-align:left;">
+                        <div style="font-weight:bold;margin-bottom:4px;">${itemData.name}</div>
+                        <div style="font-size:12px;color:#666;margin-bottom:8px;">${itemData.effect}</div>
+                        <button class="btn btn-primary" style="font-size:13px;padding:6px 14px;" onclick="useItem(${index})">使う</button>
+                    </div>
+                `;
+            }).join('');
+
+            content.innerHTML = `
+                <div class="modal-title">アイテムを使いますか？</div>
+                ${itemsHtml}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); doRollDice()">使わない</button>
+            `;
+
+            modal.classList.add('show');
+        }
+
+        function useItem(itemIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const itemId = player.items[itemIndex];
+            const itemData = ITEMS.find(i => i.id === itemId);
+            if (!itemData) { closeModal(); doRollDice(); return; }
+
+            player.items.splice(itemIndex, 1);
+            updateStatus();
+            closeModal();
+
+            switch (itemId) {
+                case 'boots':
+                    gameState.bootsActive = true;
+                    showModal('info', `「${itemData.name}」を使った！\n移動量に+2される！`, () => doRollDice());
+                    break;
+                case 'shield':
+                    gameState.shieldActive = true;
+                    showModal('info', `「${itemData.name}」を使った！\n次に戻るマスの効果を無効化する！`, () => doRollDice());
+                    break;
+                case 'binoculars':
+                    gameState.binocularsActive = true;
+                    showModal('info', `「${itemData.name}」を使った！\nサイコロを2回振り、好きな目を選べる！`, () => doRollDice());
+                    break;
+                case 'timestop': {
+                    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+                    gameState.players[nextIndex].skipTurn = true;
+                    showModal('info', `「${itemData.name}」を使った！\n${gameState.players[nextIndex].name}が1ターン休みになった！`, () => doRollDice());
+                    break;
+                }
+                default:
+                    doRollDice();
+            }
+        }
+
+        function doRollDice() {
+            if (gameState.binocularsActive) {
+                gameState.binocularsActive = false;
+                gameState.isRolling = true;
+                const dice = document.getElementById('dice');
+                dice.classList.add('rolling');
+                setTimeout(() => {
+                    const r1 = Math.floor(Math.random() * 6) + 1;
+                    const r2 = Math.floor(Math.random() * 6) + 1;
+                    dice.textContent = '?';
+                    dice.classList.remove('rolling');
+                    gameState.isRolling = false;
+                    showBinocularsChoice(r1, r2);
+                }, 500);
+                return;
+            }
+
             gameState.isRolling = true;
             const dice = document.getElementById('dice');
             dice.classList.add('rolling');
-            
-            const result = Math.floor(Math.random() * 6) + 1;
-            
+
             setTimeout(() => {
+                let result = Math.floor(Math.random() * 6) + 1;
+                if (gameState.bootsActive) {
+                    result += 2;
+                    gameState.bootsActive = false;
+                }
                 gameState.diceValue = result;
                 dice.textContent = result;
                 dice.classList.remove('rolling');
                 gameState.isRolling = false;
                 movePlayer(result);
             }, 500);
+        }
+
+        function showBinocularsChoice(r1, r2) {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">どちらの目を使いますか？</div>
+                <div style="display:flex;gap:16px;justify-content:center;margin:16px 0;">
+                    <div style="text-align:center;">
+                        <div style="font-size:48px;font-weight:bold;background:#f3f4f6;border-radius:12px;padding:16px 24px;">${r1}</div>
+                        <button class="btn btn-primary" style="margin-top:8px;" onclick="closeModal(); chooseDiceResult(${r1})">${r1}を選ぶ</button>
+                    </div>
+                    <div style="text-align:center;">
+                        <div style="font-size:48px;font-weight:bold;background:#f3f4f6;border-radius:12px;padding:16px 24px;">${r2}</div>
+                        <button class="btn btn-primary" style="margin-top:8px;" onclick="closeModal(); chooseDiceResult(${r2})">${r2}を選ぶ</button>
+                    </div>
+                </div>
+            `;
+            modal.classList.add('show');
+        }
+
+        function chooseDiceResult(value) {
+            gameState.diceValue = value;
+            document.getElementById('dice').textContent = value;
+            movePlayer(value);
         }
         
         function movePlayer(steps) {
@@ -1354,12 +1474,137 @@
             player.position = newPosition;
             renderBoard();
             updateStatus();
-            
+
             setTimeout(() => {
-                executeTileEffect(gameState.board[newPosition]);
+                if (!checkBlackholeAdjacency(newPosition) && !checkWhiteholeAdjacency(newPosition)) {
+                    executeTileEffect(gameState.board[newPosition]);
+                }
             }, 600);
         }
-        
+
+        function checkBlackholeAdjacency(position) {
+            // 現在のマス自体がブラックホールなら隣接チェックはしない
+            const currentTile = gameState.board[position];
+            if (currentTile.effect && currentTile.effect.eventId === 'blackhole') return false;
+
+            // ブラックホールマスのインデックスを収集
+            const blackholeIndices = [];
+            gameState.board.forEach((tile, idx) => {
+                if (tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'blackhole') {
+                    blackholeIndices.push(idx);
+                }
+            });
+
+            // 隣接するブラックホールを探す
+            const adjacentBHIndex = blackholeIndices.find(idx => Math.abs(idx - position) === 1);
+            if (adjacentBHIndex === undefined) return false;
+
+            // 50%の確率で吸い込まれる
+            if (Math.random() < 0.5) {
+                const player = gameState.players[gameState.currentPlayerIndex];
+                showModal('info', `隣のブラックホールに吸い込まれた！`, () => {
+                    player.position = adjacentBHIndex;
+                    renderBoard();
+                    updateStatus();
+                    setTimeout(() => {
+                        showModal('info', 'ブラックホールだ！気をつけろ！', () => {
+                            triggerBlackholeEffect();
+                        });
+                    }, 300);
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        function checkWhiteholeAdjacency(position) {
+            // 現在のマス自体がホワイトホールなら判定しない
+            const currentTile = gameState.board[position];
+            if (currentTile.effect && currentTile.effect.eventId === 'whitehole') return false;
+
+            // ホワイトホールマスのインデックスを収集
+            const whiteholeIndices = [];
+            gameState.board.forEach((tile, idx) => {
+                if (tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'whitehole') {
+                    whiteholeIndices.push(idx);
+                }
+            });
+
+            // 隣接するホワイトホールを探す
+            const adjacentWHIndex = whiteholeIndices.find(idx => Math.abs(idx - position) === 1);
+            if (adjacentWHIndex === undefined) return false;
+
+            // 50%の確率で弾き出される
+            if (Math.random() < 0.5) {
+                const player = gameState.players[gameState.currentPlayerIndex];
+                // 前のマスなら1戻る、後ろのマスなら1進む
+                const direction = position < adjacentWHIndex ? -1 : 1;
+                let newPos = position + direction;
+                if (newPos < 0) newPos = 0;
+                if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+
+                showModal('info', `隣のホワイトホールに弾き出された！`, () => {
+                    player.position = newPos;
+                    renderBoard();
+                    updateStatus();
+                    setTimeout(() => {
+                        executeTileEffect(gameState.board[newPos]);
+                    }, 300);
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        function triggerBlackholeEffect() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const roll = Math.random();
+
+            if (roll < 0.80) {
+                // 80%: ホワイトホールマスに移動（存在する場合）
+                const whiteholeTileIndex = gameState.board.findIndex(tile =>
+                    tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'whitehole'
+                );
+                if (whiteholeTileIndex !== -1) {
+                    player.position = whiteholeTileIndex;
+                    renderBoard();
+                    updateStatus();
+                    showModal('info', `ホワイトホールから吐き出された！`, () => nextTurn());
+                } else {
+                    showModal('info', `ブラックホールに吸い込まれたが、ホワイトホールが存在しない...何も起きなかった。`, () => nextTurn());
+                }
+            } else if (roll < 0.85) {
+                // 5%: プレイヤーが退場
+                const playerName = player.name;
+                showModal('info', `${playerName}がブラックホールに消えてしまった！`, () => {
+                    eliminatePlayer();
+                });
+            } else {
+                // 15%: 何も起きない
+                showModal('info', `ブラックホールに近づいたが、何も起きなかった...`, () => nextTurn());
+            }
+        }
+
+        function eliminatePlayer() {
+            const eliminated = gameState.players[gameState.currentPlayerIndex];
+            gameState.players.splice(gameState.currentPlayerIndex, 1);
+
+            if (gameState.players.length === 0) {
+                showModal('vanished', `${eliminated.name}がブラックホールに消えた...\nもう誰もいない。`);
+                return;
+            }
+
+            // インデックスが範囲外になった場合は先頭に戻す
+            if (gameState.currentPlayerIndex >= gameState.players.length) {
+                gameState.currentPlayerIndex = 0;
+            }
+
+            renderBoard();
+            updateStatus();
+        }
+
         function executeTileEffect(tile) {
             if (!tile.effect) {
                 nextTurn();
@@ -1371,7 +1616,14 @@
             switch (tile.effect.type) {
                 case 'move':
                     const moveValue = tile.effect.value;
-                    showModal('info', 
+                    if (moveValue < 0 && gameState.shieldActive) {
+                        gameState.shieldActive = false;
+                        showModal('info', `盾が${Math.abs(moveValue)}マス戻る効果を無効化した！`, () => {
+                            nextTurn();
+                        });
+                        break;
+                    }
+                    showModal('info',
                         moveValue > 0 ? `${Math.abs(moveValue)}マス進む！` : `${Math.abs(moveValue)}マス戻る...`,
                         () => {
                             let newPos = player.position + moveValue;
@@ -1391,7 +1643,7 @@
                         showModal('info', 'アイテムなし', () => nextTurn());
                     } else {
                         const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
-                        player.items.push(randomItem.name);
+                        player.items.push(randomItem.id);
                         showModal('info', `「${randomItem.name}」を手に入れた！`, () => {
                             updateStatus();
                             nextTurn();
@@ -1416,7 +1668,7 @@
                 const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
                 if (enabledItemsList.length > 0) {
                     const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
-                    player.items.push(randomItem.name);
+                    player.items.push(randomItem.id);
                 }
             } else if (eventEffect.eventEffect === 'extraTurn') {
                 callback = () => {
@@ -1445,8 +1697,13 @@
                     updateStatus();
                     nextTurn();
                 };
+            } else if (eventEffect.eventEffect === 'blackhole') {
+                callback = () => triggerBlackholeEffect();
+            } else if (eventEffect.eventEffect === 'whitehole') {
+                // 通常着地では何も起きない
+                callback = () => nextTurn();
             }
-            
+
             showModal('info', eventEffect.eventText, callback);
             updateStatus();
         }
@@ -1485,9 +1742,10 @@
             
             if (player.items.length > 0) {
                 inventoryContainer.classList.remove('hidden');
-                inventory.innerHTML = player.items.map(item => 
-                    `<div class="inventory-item">${item}</div>`
-                ).join('');
+                inventory.innerHTML = player.items.map(itemId => {
+                    const itemData = ITEMS.find(i => i.id === itemId);
+                    return `<div class="inventory-item">${itemData ? itemData.name : itemId}</div>`;
+                }).join('');
             } else {
                 inventoryContainer.classList.add('hidden');
             }
@@ -1508,6 +1766,12 @@
                     <div class="modal-title">🎉 ゴール！</div>
                     <div class="modal-text">${text}</div>
                     <button class="btn btn-primary" onclick="closeModal(); switchMode('playMode')">終了</button>
+                `;
+            } else if (type === 'vanished') {
+                content.innerHTML = `
+                    <div class="modal-title">🌀 消失...</div>
+                    <div class="modal-text">${text}</div>
+                    <button class="btn btn-secondary" onclick="closeModal(); switchMode('playMode')">タイトルへ戻る</button>
                 `;
             } else {
                 content.innerHTML = `
