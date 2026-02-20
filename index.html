@@ -1726,9 +1726,8 @@
         function setBabelTarget(targetIndex) {
             const player = gameState.players[gameState.currentPlayerIndex];
             player.babelTarget = targetIndex;
+            const cb = window.modalCallback;   // closeModal前に退避
             closeModal();
-            const cb = window.modalCallback;
-            window.modalCallback = null;
             showModal('info', `${gameState.players[targetIndex].name}を選択した。\nゲーム終了時に順位が入れ替わる...`, () => { if (cb) cb(); });
         }
 
@@ -2033,7 +2032,7 @@
                 content.innerHTML = `
                     <div class="modal-title">${type === 'info' ? 'お知らせ' : 'イベント発生！'}</div>
                     <div class="modal-text">${text}</div>
-                    <button class="btn btn-primary" onclick="closeModal(); if (window.modalCallback) window.modalCallback()">OK</button>
+                    <button class="btn btn-primary" onclick="handleModalOk()">OK</button>
                 `;
                 
                 if (callback) {
@@ -2044,6 +2043,12 @@
             modal.classList.add('show');
         }
         
+        function handleModalOk() {
+            const cb = window.modalCallback;
+            closeModal();
+            if (cb) cb();
+        }
+
         function closeModal() {
             document.getElementById('modal').classList.remove('show');
             window.modalCallback = null;
