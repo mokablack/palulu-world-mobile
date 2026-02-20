@@ -1476,7 +1476,7 @@
             updateStatus();
 
             setTimeout(() => {
-                if (!checkBlackholeAdjacency(newPosition)) {
+                if (!checkBlackholeAdjacency(newPosition) && !checkWhiteholeAdjacency(newPosition)) {
                     executeTileEffect(gameState.board[newPosition]);
                 }
             }, 600);
@@ -1510,6 +1510,46 @@
                         showModal('info', 'ブラックホールだ！気をつけろ！', () => {
                             triggerBlackholeEffect();
                         });
+                    }, 300);
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        function checkWhiteholeAdjacency(position) {
+            // 現在のマス自体がホワイトホールなら判定しない
+            const currentTile = gameState.board[position];
+            if (currentTile.effect && currentTile.effect.eventId === 'whitehole') return false;
+
+            // ホワイトホールマスのインデックスを収集
+            const whiteholeIndices = [];
+            gameState.board.forEach((tile, idx) => {
+                if (tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'whitehole') {
+                    whiteholeIndices.push(idx);
+                }
+            });
+
+            // 隣接するホワイトホールを探す
+            const adjacentWHIndex = whiteholeIndices.find(idx => Math.abs(idx - position) === 1);
+            if (adjacentWHIndex === undefined) return false;
+
+            // 50%の確率で弾き出される
+            if (Math.random() < 0.5) {
+                const player = gameState.players[gameState.currentPlayerIndex];
+                // ホワイトホールのひとつ前かひとつ後ろにランダムで移動
+                const direction = Math.random() < 0.5 ? -1 : 1;
+                let newPos = adjacentWHIndex + direction;
+                if (newPos < 0) newPos = 0;
+                if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+
+                showModal('info', `隣のホワイトホールに弾き出された！`, () => {
+                    player.position = newPos;
+                    renderBoard();
+                    updateStatus();
+                    setTimeout(() => {
+                        executeTileEffect(gameState.board[newPos]);
                     }, 300);
                 });
                 return true;
