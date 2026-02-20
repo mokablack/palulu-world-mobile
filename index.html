@@ -1538,9 +1538,9 @@
             // 50%の確率で弾き出される
             if (Math.random() < 0.5) {
                 const player = gameState.players[gameState.currentPlayerIndex];
-                // ホワイトホールのひとつ前かひとつ後ろにランダムで移動
-                const direction = Math.random() < 0.5 ? -1 : 1;
-                let newPos = adjacentWHIndex + direction;
+                // 前のマスなら1戻る、後ろのマスなら1進む
+                const direction = position < adjacentWHIndex ? -1 : 1;
+                let newPos = position + direction;
                 if (newPos < 0) newPos = 0;
                 if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
 
