@@ -717,7 +717,13 @@
             { id: 'boots', name: '魔法の靴', effect: '次のターン移動量+2' },
             { id: 'shield', name: '盾', effect: '戻るマスの効果を1回無効化' },
             { id: 'binoculars', name: '双眼鏡', effect: 'サイコロを2回振り好きな目を選べる' },
-            { id: 'timestop', name: 'タイムストップ', effect: '次の順番のプレイヤーが1ターン休み' }
+            { id: 'timestop', name: 'タイムストップ', effect: '次の順番のプレイヤーが1ターン休み' },
+            { id: 'koshindo', name: 'コシンドスプレー', effect: '止まったマスの効果を1度だけ無効化（着地後使用）' },
+            { id: 'sakasama', name: '逆さまスプレー', effect: 'サイコロの目だけ逆方向に移動（サイコロ後使用）' },
+            { id: 'star', name: 'スター', effect: 'リザルトに記録される（効果なし）' },
+            { id: 'curseddoll', name: '呪われた人形', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
+            { id: 'babel', name: 'バベル', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
+            { id: 'snatcher', name: 'スナッチャー', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' }
         ];
         
         const EVENTS = [
@@ -759,7 +765,9 @@
             // アイテム効果フラグ
             bootsActive: false,
             shieldActive: false,
-            binocularsActive: false
+            binocularsActive: false,
+            koshindoActive: false,
+            sakasamaActive: false
         };
         
         // ========== 初期化 ==========
@@ -1196,7 +1204,8 @@
                 name: 'プレイヤー',
                 position: 0,
                 items: [],
-                skipTurn: false
+                skipTurn: false,
+                babelTarget: null
             }];
             gameState.currentPlayerIndex = 0;
             switchMode('play');
@@ -1214,7 +1223,8 @@
                     name,
                     position: 0,
                     items: [],
-                    skipTurn: false
+                    skipTurn: false,
+                    babelTarget: null
                 });
             }
             
@@ -1316,8 +1326,10 @@
                 return;
             }
 
-            // アイテムを持っている場合は使用確認を出す
-            if (currentPlayer.items.length > 0) {
+            // サイコロ前に使えるアイテムがある場合のみ確認を出す
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher'];
+            const hasPreRollItems = currentPlayer.items.some(id => PRE_ROLL_ITEMS.includes(id));
+            if (hasPreRollItems) {
                 promptItemUsage();
             } else {
                 doRollDice();
@@ -1329,7 +1341,12 @@
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
 
-            const itemsHtml = player.items.map((itemId, index) => {
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher'];
+            const usableEntries = player.items
+                .map((itemId, index) => ({ itemId, index }))
+                .filter(({ itemId }) => PRE_ROLL_ITEMS.includes(itemId));
+
+            const itemsHtml = usableEntries.map(({ itemId, index }) => {
                 const itemData = ITEMS.find(i => i.id === itemId);
                 if (!itemData) return '';
                 return `
@@ -1379,6 +1396,9 @@
                     showModal('info', `「${itemData.name}」を使った！\n${gameState.players[nextIndex].name}が1ターン休みになった！`, () => doRollDice());
                     break;
                 }
+                case 'snatcher':
+                    promptSnatcherOwnItem();
+                    break;
                 default:
                     doRollDice();
             }
@@ -1415,7 +1435,7 @@
                 dice.textContent = result;
                 dice.classList.remove('rolling');
                 gameState.isRolling = false;
-                movePlayer(result);
+                promptSakasamaOrMove(result);
             }, 500);
         }
 
@@ -1441,7 +1461,7 @@
         function chooseDiceResult(value) {
             gameState.diceValue = value;
             document.getElementById('dice').textContent = value;
-            movePlayer(value);
+            promptSakasamaOrMove(value);
         }
         
         function movePlayer(steps) {
@@ -1454,7 +1474,25 @@
                 renderBoard();
                 
                 setTimeout(() => {
-                    showModal('win', `${player.name}がゴール！\n\n所持アイテム: ${player.items.length}個`);
+                    const winnerIdx = gameState.currentPlayerIndex;
+                    let announced = player;
+                    let babelNote = '';
+                    // 勝者がバベルを持っている場合
+                    if (player.babelTarget !== null && gameState.players[player.babelTarget]) {
+                        const target = gameState.players[player.babelTarget];
+                        babelNote = `\n\n🌀 バベルの効果！\n${player.name}と${target.name}の順位が入れ替わった！`;
+                        announced = target;
+                    }
+                    // 他プレイヤーが勝者をバベルで狙っていた場合
+                    gameState.players.forEach((p, i) => {
+                        if (i !== winnerIdx && p.babelTarget === winnerIdx) {
+                            babelNote = `\n\n🌀 バベルの効果！\n${p.name}が${player.name}と順位を入れ替えた！`;
+                            announced = p;
+                        }
+                    });
+                    const starCount = announced.items.filter(id => id === 'star').length;
+                    const starNote = starCount > 0 ? `\n⭐ スター: ${starCount}個` : '';
+                    showModal('win', `${announced.name}が優勝！\n\n所持アイテム: ${announced.items.length}個${starNote}${babelNote}`);
                 }, 500);
                 return;
             }
@@ -1465,7 +1503,7 @@
 
             setTimeout(() => {
                 if (!checkBlackholeAdjacency(newPosition) && !checkWhiteholeAdjacency(newPosition)) {
-                    executeTileEffect(gameState.board[newPosition]);
+                    promptKoshindoOrEffect(newPosition);
                 }
             }, 600);
         }
@@ -1593,12 +1631,240 @@
             updateStatus();
         }
 
+        // ========== アイテム取得共通処理 ==========
+        function onItemAcquired(itemData, afterCallback) {
+            if (itemData.id === 'babel') {
+                showModal('info', `「スター」を手に入れた！\n（他のプレイヤーにはスターとして表示されます）`, () => {
+                    updateStatus();
+                    promptBabelTarget(afterCallback);
+                });
+            } else {
+                showModal('info', `「${itemData.name}」を手に入れた！`, () => {
+                    updateStatus();
+                    if (afterCallback) afterCallback();
+                });
+            }
+        }
+
+        // ========== 逆さまスプレー ==========
+        function promptSakasamaOrMove(result) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const sakasamaIndex = player.items.indexOf('sakasama');
+            if (sakasamaIndex === -1) {
+                movePlayer(result);
+                return;
+            }
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">逆さまスプレー</div>
+                <div class="modal-text">サイコロの目: <strong>${result}</strong><br>逆方向（${result}マス戻る）に移動しますか？</div>
+                <button class="btn btn-primary" onclick="useSakasama(${result}, ${sakasamaIndex})">使う（${result}マス戻る）</button>
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); movePlayer(${result})">使わない（${result}マス進む）</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function useSakasama(result, itemIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(itemIndex, 1);
+            updateStatus();
+            closeModal();
+            showModal('info', `逆さまスプレーを使った！\n${result}マス逆方向に進む！`, () => movePlayer(-result));
+        }
+
+        // ========== コシンドスプレー ==========
+        function promptKoshindoOrEffect(position) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const tile = gameState.board[position];
+            const koshindoIndex = player.items.indexOf('koshindo');
+            if (koshindoIndex === -1 || !tile.effect) {
+                executeTileEffect(tile);
+                return;
+            }
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">コシンドスプレー</div>
+                <div class="modal-text">このマスの効果を無効化しますか？</div>
+                <button class="btn btn-primary" onclick="useKoshindo(${koshindoIndex})">使う（効果を無効化）</button>
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); executeTileEffect(gameState.board[${position}])">使わない</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function useKoshindo(itemIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(itemIndex, 1);
+            updateStatus();
+            closeModal();
+            showModal('info', 'コシンドスプレーを使った！\nマスの効果を無効化した！', () => nextTurn());
+        }
+
+        // ========== バベル ==========
+        function promptBabelTarget(afterCallback) {
+            const otherPlayers = gameState.players.filter((_, i) => i !== gameState.currentPlayerIndex);
+            if (otherPlayers.length === 0) {
+                showModal('info', '（1人プレイのためバベルの効果は発動しません）', () => { if (afterCallback) afterCallback(); });
+                return;
+            }
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const playersHtml = gameState.players.map((p, i) => {
+                if (i === gameState.currentPlayerIndex) return '';
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="setBabelTarget(${i})">${p.name}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">バベル</div>
+                <div class="modal-text">ゲーム終了後に順位を入れ替えるプレイヤーを選んでください。</div>
+                ${playersHtml}
+            `;
+            modal.classList.add('show');
+            window.modalCallback = afterCallback;
+        }
+
+        function setBabelTarget(targetIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.babelTarget = targetIndex;
+            closeModal();
+            const cb = window.modalCallback;
+            window.modalCallback = null;
+            showModal('info', `${gameState.players[targetIndex].name}を選択した。\nゲーム終了時に順位が入れ替わる...`, () => { if (cb) cb(); });
+        }
+
+        // ========== 呪われた人形 肩代わり処理 ==========
+        function applyEffectToDollHolder(holderIndex, tile) {
+            const holder = gameState.players[holderIndex];
+            switch (tile.effect.type) {
+                case 'move': {
+                    let newPos = holder.position + tile.effect.value;
+                    if (newPos < 0) newPos = 0;
+                    if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+                    holder.position = newPos;
+                    renderBoard();
+                    updateStatus();
+                    showModal('info',
+                        tile.effect.value > 0
+                            ? `${holder.name}が${Math.abs(tile.effect.value)}マス進んだ！`
+                            : `${holder.name}が${Math.abs(tile.effect.value)}マス戻った...`,
+                        () => nextTurn()
+                    );
+                    break;
+                }
+                case 'item': {
+                    const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
+                    if (enabledItemsList.length > 0) {
+                        const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
+                        holder.items.push(randomItem.id);
+                        const dispName = randomItem.id === 'babel' ? 'スター' : randomItem.name;
+                        showModal('info', `${holder.name}が「${dispName}」を受け取った！`, () => { updateStatus(); nextTurn(); });
+                    } else {
+                        nextTurn();
+                    }
+                    break;
+                }
+                default:
+                    holder.skipTurn = true;
+                    showModal('info', `呪いの余波で${holder.name}が1ターン休みになった！`, () => { updateStatus(); nextTurn(); });
+            }
+        }
+
+        // ========== スナッチャー ==========
+        function promptSnatcherOwnItem() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            if (player.items.length === 0) {
+                showModal('info', '交換できるアイテムがありません', () => doRollDice());
+                return;
+            }
+            const itemsHtml = player.items.map((itemId, index) => {
+                const displayId = itemId === 'babel' ? 'star' : itemId;
+                const itemData = ITEMS.find(i => i.id === displayId);
+                const name = itemData ? itemData.name : itemId;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="snatcherPickTarget(${index})">${name}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">スナッチャー</div>
+                <div class="modal-text">交換する自分のアイテムを選んでください</div>
+                ${itemsHtml}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); doRollDice()">キャンセル</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function snatcherPickTarget(ownItemIndex) {
+            closeModal();
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const playersHtml = gameState.players.map((p, i) => {
+                if (i === gameState.currentPlayerIndex) return '';
+                if (p.items.length === 0) return `<button class="btn btn-secondary" style="margin:4px;width:100%;" disabled>${p.name}（アイテムなし）</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="snatcherPickItem(${ownItemIndex}, ${i})">${p.name}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">スナッチャー</div>
+                <div class="modal-text">交換相手を選んでください</div>
+                ${playersHtml}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); doRollDice()">キャンセル</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function snatcherPickItem(ownItemIndex, targetPlayerIndex) {
+            closeModal();
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const itemsHtml = targetPlayer.items.map((itemId, index) => {
+                const displayId = itemId === 'babel' ? 'star' : itemId;
+                const itemData = ITEMS.find(i => i.id === displayId);
+                const name = itemData ? itemData.name : itemId;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="executeSnatch(${ownItemIndex}, ${targetPlayerIndex}, ${index})">${name}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">スナッチャー</div>
+                <div class="modal-text">${targetPlayer.name}のどのアイテムと交換しますか？</div>
+                ${itemsHtml}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); doRollDice()">キャンセル</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function executeSnatch(ownItemIndex, targetPlayerIndex, targetItemIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            const ownItemId = player.items[ownItemIndex];
+            const targetItemId = targetPlayer.items[targetItemIndex];
+            player.items[ownItemIndex] = targetItemId;
+            targetPlayer.items[targetItemIndex] = ownItemId;
+            const ownDispId = ownItemId === 'babel' ? 'star' : ownItemId;
+            const tgtDispId = targetItemId === 'babel' ? 'star' : targetItemId;
+            const ownName = (ITEMS.find(i => i.id === ownDispId) || {}).name || ownItemId;
+            const tgtName = (ITEMS.find(i => i.id === tgtDispId) || {}).name || targetItemId;
+            closeModal();
+            updateStatus();
+            showModal('info', `スナッチャー発動！\n「${ownName}」と「${tgtName}」を交換した！`, () => doRollDice());
+        }
+
         function executeTileEffect(tile) {
             if (!tile.effect) {
                 nextTurn();
                 return;
             }
-            
+
+            // 呪われた人形チェック（他プレイヤーが持っていれば30%で肩代わり）
+            const dollHolderIndex = gameState.players.findIndex((p, i) =>
+                i !== gameState.currentPlayerIndex && p.items.includes('curseddoll')
+            );
+            if (dollHolderIndex !== -1 && Math.random() < 0.30) {
+                const dollHolder = gameState.players[dollHolderIndex];
+                showModal('info', `呪われた人形が反応した！\n${dollHolder.name}が代わりに効果を受ける！`, () => {
+                    applyEffectToDollHolder(dollHolderIndex, tile);
+                });
+                return;
+            }
+
             const player = gameState.players[gameState.currentPlayerIndex];
             
             switch (tile.effect.type) {
@@ -1632,10 +1898,7 @@
                     } else {
                         const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                         player.items.push(randomItem.id);
-                        showModal('info', `「${randomItem.name}」を手に入れた！`, () => {
-                            updateStatus();
-                            nextTurn();
-                        });
+                        onItemAcquired(randomItem, () => nextTurn());
                     }
                     break;
                     
@@ -1657,6 +1920,9 @@
                 if (enabledItemsList.length > 0) {
                     const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                     player.items.push(randomItem.id);
+                    if (randomItem.id === 'babel') {
+                        callback = () => { updateStatus(); promptBabelTarget(); };
+                    }
                 }
             } else if (eventEffect.eventEffect === 'extraTurn') {
                 callback = () => {
@@ -1731,7 +1997,9 @@
             if (player.items.length > 0) {
                 inventoryContainer.classList.remove('hidden');
                 inventory.innerHTML = player.items.map(itemId => {
-                    const itemData = ITEMS.find(i => i.id === itemId);
+                    // バベルは他プレイヤーにスターとして表示（共有画面のため常にスター表示）
+                    const displayId = itemId === 'babel' ? 'star' : itemId;
+                    const itemData = ITEMS.find(i => i.id === displayId);
                     return `<div class="inventory-item">${itemData ? itemData.name : itemId}</div>`;
                 }).join('');
             } else {
