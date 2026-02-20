@@ -726,7 +726,9 @@
             { id: 'goddess', title: '幸運の女神', text: '幸運の女神が微笑んだ！もう一度サイコロを振れる！', effect: 'extraTurn' },
             { id: 'pit', title: '落とし穴', text: '落とし穴に落ちた！1回休み...', effect: 'skip' },
             { id: 'tailwind', title: '追い風', text: '追い風に乗った！3マス前進する', effect: 3 },
-            { id: 'storm', title: '嵐', text: '嵐が来た！自分以外の全プレイヤーが1マス後退する', effect: 'storm' }
+            { id: 'storm', title: '嵐', text: '嵐が来た！自分以外の全プレイヤーが1マス後退する', effect: 'storm' },
+            { id: 'blackhole', title: 'ブラックホール', text: 'ブラックホールだ！気をつけろ！', effect: 'blackhole' },
+            { id: 'whitehole', title: 'ホワイトホール', text: 'ホワイトホールから吐き出された！', effect: 'whitehole' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -1472,12 +1474,97 @@
             player.position = newPosition;
             renderBoard();
             updateStatus();
-            
+
             setTimeout(() => {
-                executeTileEffect(gameState.board[newPosition]);
+                if (!checkBlackholeAdjacency(newPosition)) {
+                    executeTileEffect(gameState.board[newPosition]);
+                }
             }, 600);
         }
-        
+
+        function checkBlackholeAdjacency(position) {
+            // 現在のマス自体がブラックホールなら隣接チェックはしない
+            const currentTile = gameState.board[position];
+            if (currentTile.effect && currentTile.effect.eventId === 'blackhole') return false;
+
+            // ブラックホールマスのインデックスを収集
+            const blackholeIndices = [];
+            gameState.board.forEach((tile, idx) => {
+                if (tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'blackhole') {
+                    blackholeIndices.push(idx);
+                }
+            });
+
+            // 隣接するブラックホールを探す
+            const adjacentBHIndex = blackholeIndices.find(idx => Math.abs(idx - position) === 1);
+            if (adjacentBHIndex === undefined) return false;
+
+            // 50%の確率で吸い込まれる
+            if (Math.random() < 0.5) {
+                const player = gameState.players[gameState.currentPlayerIndex];
+                showModal('info', `隣のブラックホールに吸い込まれた！`, () => {
+                    player.position = adjacentBHIndex;
+                    renderBoard();
+                    updateStatus();
+                    setTimeout(() => {
+                        showModal('info', 'ブラックホールだ！気をつけろ！', () => {
+                            triggerBlackholeEffect();
+                        });
+                    }, 300);
+                });
+                return true;
+            }
+
+            return false;
+        }
+
+        function triggerBlackholeEffect() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const roll = Math.random();
+
+            if (roll < 0.80) {
+                // 80%: ホワイトホールマスに移動（存在する場合）
+                const whiteholeTileIndex = gameState.board.findIndex(tile =>
+                    tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'whitehole'
+                );
+                if (whiteholeTileIndex !== -1) {
+                    player.position = whiteholeTileIndex;
+                    renderBoard();
+                    updateStatus();
+                    showModal('info', `ホワイトホールから吐き出された！`, () => nextTurn());
+                } else {
+                    showModal('info', `ブラックホールに吸い込まれたが、ホワイトホールが存在しない...何も起きなかった。`, () => nextTurn());
+                }
+            } else if (roll < 0.85) {
+                // 5%: プレイヤーが退場
+                const playerName = player.name;
+                showModal('info', `${playerName}がブラックホールに消えてしまった！`, () => {
+                    eliminatePlayer();
+                });
+            } else {
+                // 15%: 何も起きない
+                showModal('info', `ブラックホールに近づいたが、何も起きなかった...`, () => nextTurn());
+            }
+        }
+
+        function eliminatePlayer() {
+            const eliminated = gameState.players[gameState.currentPlayerIndex];
+            gameState.players.splice(gameState.currentPlayerIndex, 1);
+
+            if (gameState.players.length === 0) {
+                showModal('vanished', `${eliminated.name}がブラックホールに消えた...\nもう誰もいない。`);
+                return;
+            }
+
+            // インデックスが範囲外になった場合は先頭に戻す
+            if (gameState.currentPlayerIndex >= gameState.players.length) {
+                gameState.currentPlayerIndex = 0;
+            }
+
+            renderBoard();
+            updateStatus();
+        }
+
         function executeTileEffect(tile) {
             if (!tile.effect) {
                 nextTurn();
@@ -1570,8 +1657,13 @@
                     updateStatus();
                     nextTurn();
                 };
+            } else if (eventEffect.eventEffect === 'blackhole') {
+                callback = () => triggerBlackholeEffect();
+            } else if (eventEffect.eventEffect === 'whitehole') {
+                // 通常着地では何も起きない
+                callback = () => nextTurn();
             }
-            
+
             showModal('info', eventEffect.eventText, callback);
             updateStatus();
         }
@@ -1634,6 +1726,12 @@
                     <div class="modal-title">🎉 ゴール！</div>
                     <div class="modal-text">${text}</div>
                     <button class="btn btn-primary" onclick="closeModal(); switchMode('playMode')">終了</button>
+                `;
+            } else if (type === 'vanished') {
+                content.innerHTML = `
+                    <div class="modal-title">🌀 消失...</div>
+                    <div class="modal-text">${text}</div>
+                    <button class="btn btn-secondary" onclick="closeModal(); switchMode('playMode')">タイトルへ戻る</button>
                 `;
             } else {
                 content.innerHTML = `
