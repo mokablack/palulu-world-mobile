@@ -630,7 +630,11 @@
             <!-- オンラインマルチ選択 -->
             <div id="onlineMultiSelect" class="hidden">
                 <h2>オンラインマルチプレイ</h2>
-                <div class="controls">
+                <div class="player-input">
+                    <label>あなたの名前</label>
+                    <input type="text" id="hostPlayerName" placeholder="プレイヤー名">
+                </div>
+                <div class="controls mt-20">
                     <button class="btn btn-primary" onclick="createOnlineRoom()">ルームを作成</button>
                     <button class="btn btn-primary" onclick="switchMode('joinRoom')">ルームに参加</button>
                     <button class="btn btn-secondary" onclick="switchMode('playMode')">← 戻る</button>
@@ -700,6 +704,10 @@
     <div class="modal" id="modal">
         <div class="modal-content" id="modalContent"></div>
     </div>
+
+    <!-- Firebase SDK (オンラインマルチプレイ用) -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
 
     <script>
         // ========== データ定義 ==========
@@ -834,12 +842,16 @@
         
         function initializeFirebase() {
             if (!gameState.firebaseConfig || gameState.firebaseInitialized) return;
-            
-            // TODO: 実際のFirebase初期化コード
-            // firebase.initializeApp(gameState.firebaseConfig);
-            // gameState.firebaseInitialized = true;
-            
-            console.log('Firebase初期化準備完了:', gameState.firebaseConfig);
+            try {
+                if (!firebase.apps.length) {
+                    firebase.initializeApp(gameState.firebaseConfig);
+                }
+                gameState.firebaseInitialized = true;
+                console.log('Firebase初期化完了');
+            } catch (e) {
+                console.error('Firebase初期化エラー:', e);
+                showModal('info', 'Firebase初期化に失敗しました。\nAPI KeyとDatabase URLを確認してください。\nエラー: ' + e.message);
+            }
         }
         
         // ========== ボード管理 ==========
@@ -1227,57 +1239,115 @@
             updateStatus();
         }
         
-        // ========== オンラインマルチ (スタブ実装) ==========
+        // ========== オンラインマルチ (Firebase実装) ==========
         function createOnlineRoom() {
             if (!gameState.firebaseConfig) {
                 showModal('info', 'Firebase設定が必要です。\n画面上部の設定セクションから設定してください。');
                 return;
             }
-            
-            // TODO: 実際のFirebase実装
-            // 現在はダミー実装
+            if (!gameState.firebaseInitialized) initializeFirebase();
+            if (!gameState.firebaseInitialized) return;
+
+            const hostName = document.getElementById('hostPlayerName').value.trim() || 'ホスト';
             gameState.roomId = generateRoomId();
             gameState.isHost = true;
-            gameState.playerId = 'player-' + Date.now();
-            
-            document.getElementById('displayRoomId').textContent = gameState.roomId;
-            switchMode('roomWaiting');
-            
-            // ダミーのプレイヤーリスト表示
-            updateWaitingPlayers([{ id: gameState.playerId, name: 'あなた (ホスト)', connected: true }]);
-            
-            showModal('info', 'ルームを作成しました！\n\nルームID: ' + gameState.roomId + '\n\n他のプレイヤーにルームIDを共有して参加してもらいましょう。');
+            gameState.playerId = 'host-' + Date.now();
+
+            const db = firebase.database();
+            const roomRef = db.ref('rooms/' + gameState.roomId);
+            gameState.firebaseRefs.roomRef = roomRef;
+
+            roomRef.set({ hostId: gameState.playerId, status: 'waiting', createdAt: Date.now() })
+                .then(() => {
+                    const myPlayerRef = roomRef.child('players/' + gameState.playerId);
+                    myPlayerRef.set({ name: hostName, connected: true });
+                    myPlayerRef.onDisconnect().remove();
+                    gameState.firebaseRefs.playerRef = myPlayerRef;
+
+                    gameState.firebaseRefs.playersCallback = roomRef.child('players').on('value', snap => {
+                        const data = snap.val() || {};
+                        const list = Object.entries(data).map(([id, p]) => ({ id, name: p.name, connected: p.connected }));
+                        updateWaitingPlayers(list);
+                    });
+
+                    gameState.firebaseRefs.statusCallback = roomRef.child('status').on('value', snap => {
+                        if (snap.val() === 'started' && gameState.mode === 'roomWaiting') {
+                            loadOnlineGameState();
+                        }
+                    });
+
+                    document.getElementById('displayRoomId').textContent = gameState.roomId;
+                    switchMode('roomWaiting');
+                    showModal('info', 'ルームを作成しました！\nルームID: ' + gameState.roomId + '\n\n他のプレイヤーにルームIDを共有してください。');
+                })
+                .catch(e => {
+                    showModal('info', 'ルームの作成に失敗しました。\nDatabase RulesでRealtime Databaseの読み書きを許可しているか確認してください。\nエラー: ' + e.message);
+                });
         }
-        
+
         function joinOnlineRoom() {
             const roomId = document.getElementById('joinRoomId').value.trim();
             const playerName = document.getElementById('joinPlayerName').value.trim();
-            
+
             if (!roomId || !playerName) {
                 alert('ルームIDとプレイヤー名を入力してください');
                 return;
             }
-
             if (!gameState.firebaseConfig) {
-                showModal('info', 'Firebase設定が必要です。\nホストから共有されたFirebaseのAPI KeyとDatabase URLを\n画面上部の設定セクションから入力してください。');
+                showModal('info', 'Firebase設定が必要です。\nホストから共有されたAPI KeyとDatabase URLを\n画面上部の設定セクションから入力してください。');
                 return;
             }
-            
-            // TODO: 実際のFirebase実装
-            gameState.roomId = roomId;
-            gameState.playerId = 'player-' + Date.now();
-            gameState.isHost = false;
+            if (!gameState.firebaseInitialized) initializeFirebase();
+            if (!gameState.firebaseInitialized) return;
 
-            document.getElementById('displayRoomId').textContent = roomId;
-            switchMode('roomWaiting');
+            const db = firebase.database();
+            const roomRef = db.ref('rooms/' + roomId);
 
-            updateWaitingPlayers([{ id: gameState.playerId, name: playerName, connected: true }]);
+            roomRef.once('value')
+                .then(snap => {
+                    if (!snap.exists()) {
+                        showModal('info', 'ルームが見つかりません。\nルームIDを確認してください。');
+                        return;
+                    }
+                    if (snap.val().status === 'started') {
+                        showModal('info', 'このルームはすでにゲームが開始されています。');
+                        return;
+                    }
+
+                    gameState.roomId = roomId;
+                    gameState.playerId = 'player-' + Date.now();
+                    gameState.isHost = false;
+                    gameState.firebaseRefs.roomRef = roomRef;
+
+                    const myPlayerRef = roomRef.child('players/' + gameState.playerId);
+                    myPlayerRef.set({ name: playerName, connected: true });
+                    myPlayerRef.onDisconnect().remove();
+                    gameState.firebaseRefs.playerRef = myPlayerRef;
+
+                    gameState.firebaseRefs.playersCallback = roomRef.child('players').on('value', s => {
+                        const data = s.val() || {};
+                        const list = Object.entries(data).map(([id, p]) => ({ id, name: p.name, connected: p.connected }));
+                        updateWaitingPlayers(list);
+                    });
+
+                    gameState.firebaseRefs.statusCallback = roomRef.child('status').on('value', s => {
+                        if (s.val() === 'started' && gameState.mode === 'roomWaiting') {
+                            loadOnlineGameState();
+                        }
+                    });
+
+                    document.getElementById('displayRoomId').textContent = roomId;
+                    switchMode('roomWaiting');
+                })
+                .catch(e => {
+                    showModal('info', 'ルームへの参加に失敗しました。\nエラー: ' + e.message);
+                });
         }
-        
+
         function updateWaitingPlayers(players) {
             const list = document.getElementById('waitingPlayersList');
             list.innerHTML = '';
-            
+
             players.forEach(player => {
                 const div = document.createElement('div');
                 div.className = 'waiting-player';
@@ -1289,20 +1359,54 @@
                 `;
                 list.appendChild(div);
             });
-            
-            // 2人以上でゲーム開始ボタンを有効化
-            document.getElementById('startOnlineGameBtn').disabled = players.length < 2;
+
+            const startBtn = document.getElementById('startOnlineGameBtn');
+            if (gameState.isHost) {
+                startBtn.classList.remove('hidden');
+                startBtn.disabled = players.length < 2;
+            } else {
+                startBtn.classList.add('hidden');
+            }
         }
-        
+
         function startOnlineGame() {
-            // TODO: 実際のFirebase実装
-            showModal('info', 'オンラインゲームを開始します\n(Firebase設定後に実装されます)');
+            if (!gameState.isHost) return;
+            const roomRef = gameState.firebaseRefs.roomRef;
+            if (!roomRef) return;
+
+            roomRef.child('players').once('value').then(snap => {
+                const data = snap.val() || {};
+                const playersForGame = Object.entries(data).map(([id, p]) => ({
+                    id, name: p.name, position: 0, items: [], skipTurn: false, babelTarget: null
+                }));
+
+                if (playersForGame.length < 2) {
+                    showModal('info', '2人以上のプレイヤーが必要です。');
+                    return;
+                }
+
+                const initialSnap = { players: playersForGame, currentPlayerIndex: 0 };
+                roomRef.update({
+                    status: 'started',
+                    boardData: JSON.stringify(gameState.board),
+                    gridSize: JSON.stringify(gameState.gridSize),
+                    gameSnapshot: JSON.stringify(initialSnap)
+                });
+            });
         }
-        
+
         function leaveRoom() {
             if (!confirm('ルームを退出しますか？')) return;
+            const roomRef = gameState.firebaseRefs.roomRef;
+            if (roomRef) {
+                roomRef.child('players').off();
+                roomRef.child('status').off();
+                roomRef.child('gameSnapshot').off();
+                if (gameState.firebaseRefs.playerRef) gameState.firebaseRefs.playerRef.remove();
+            }
             gameState.roomId = null;
             gameState.isHost = false;
+            gameState.firebaseRefs = {};
             switchMode('onlineMultiSelect');
         }
         
@@ -1314,10 +1418,87 @@
             }
             return id;
         }
+
+        function loadOnlineGameState() {
+            const roomRef = gameState.firebaseRefs.roomRef;
+            if (!roomRef) return;
+
+            roomRef.once('value').then(snap => {
+                const data = snap.val();
+                if (!data || data.status !== 'started') return;
+
+                gameState.board = JSON.parse(data.boardData);
+                gameState.gridSize = JSON.parse(data.gridSize);
+                const saved = JSON.parse(data.gameSnapshot);
+                gameState.players = saved.players;
+                gameState.currentPlayerIndex = saved.currentPlayerIndex;
+                gameState.playMode = 'online';
+                gameState.localPlayerIndex = gameState.players.findIndex(p => p.id === gameState.playerId);
+
+                switchMode('play');
+                updateStatus();
+                updateDiceInteractivity();
+                listenForGameStateChanges();
+            });
+        }
+
+        function listenForGameStateChanges() {
+            const roomRef = gameState.firebaseRefs.roomRef;
+            if (!roomRef) return;
+
+            roomRef.child('gameSnapshot').on('value', snap => {
+                if (!snap.exists() || gameState.mode !== 'play' || gameState.isRolling) return;
+
+                const saved = JSON.parse(snap.val());
+                const remoteCurrentId = saved.players[saved.currentPlayerIndex]?.id;
+
+                // 他のプレイヤーのターンの更新のみ適用する
+                if (remoteCurrentId !== gameState.playerId) {
+                    gameState.players = saved.players;
+                    gameState.currentPlayerIndex = saved.currentPlayerIndex;
+                    renderBoard();
+                    updateStatus();
+                    updateDiceInteractivity();
+                }
+            });
+
+            // ゲーム終了検知
+            roomRef.child('winner').on('value', snap => {
+                if (!snap.exists() || gameState.mode !== 'play') return;
+                const w = snap.val();
+                if (w && w.name && w.name !== gameState.players[gameState.localPlayerIndex]?.name) {
+                    showModal('win', `${w.name}が優勝！`);
+                }
+            });
+        }
+
+        function syncGameStateToFirebase() {
+            if (gameState.playMode !== 'online') return;
+            const roomRef = gameState.firebaseRefs.roomRef;
+            if (!roomRef) return;
+            const snap = { players: gameState.players, currentPlayerIndex: gameState.currentPlayerIndex };
+            roomRef.child('gameSnapshot').set(JSON.stringify(snap));
+        }
+
+        function updateDiceInteractivity() {
+            if (gameState.playMode !== 'online') return;
+            const dice = document.getElementById('dice');
+            const isMyTurn = gameState.players[gameState.currentPlayerIndex]?.id === gameState.playerId;
+            dice.style.opacity = isMyTurn ? '1' : '0.4';
+            dice.style.pointerEvents = isMyTurn ? 'auto' : 'none';
+            const diceHint = dice.nextElementSibling;
+            if (diceHint) diceHint.textContent = isMyTurn ? 'タップしてサイコロを振る' : '他のプレイヤーのターンです...';
+        }
         
         // ========== ゲームプレイ ==========
         function rollDice() {
             if (gameState.isRolling) return;
+
+            // オンラインモード: 自分のターンでなければ無視
+            if (gameState.playMode === 'online') {
+                const isMyTurn = gameState.players[gameState.currentPlayerIndex]?.id === gameState.playerId;
+                if (!isMyTurn) return;
+            }
 
             const currentPlayer = gameState.players[gameState.currentPlayerIndex];
             if (currentPlayer.skipTurn) {
@@ -1493,6 +1674,12 @@
                     });
                     const starCount = announced.items.filter(id => id === 'star').length;
                     const starNote = starCount > 0 ? `\n⭐ スター: ${starCount}個` : '';
+                    // オンラインモード: 勝者を全プレイヤーに通知
+                    if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
+                        syncGameStateToFirebase();
+                        gameState.firebaseRefs.roomRef.child('winner').set({ name: announced.name });
+                        gameState.firebaseRefs.roomRef.child('status').set('finished');
+                    }
                     showModal('win', `${announced.name}が優勝！\n\n所持アイテム: ${announced.items.length}個${starNote}${babelNote}`);
                 }, 500);
                 return;
@@ -1964,9 +2151,14 @@
         
         function nextTurn() {
             if (gameState.playMode === 'single') return;
-            
+
             gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
             updateStatus();
+
+            if (gameState.playMode === 'online') {
+                syncGameStateToFirebase();
+                updateDiceInteractivity();
+            }
         }
         
         function updateStatus() {
@@ -2009,6 +2201,14 @@
         
         function exitGame() {
             if (!confirm('ゲームを終了しますか？')) return;
+            // オンラインモード: リスナー解除
+            if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
+                gameState.firebaseRefs.roomRef.child('gameSnapshot').off();
+                gameState.firebaseRefs.roomRef.child('winner').off();
+                if (gameState.firebaseRefs.playerRef) gameState.firebaseRefs.playerRef.remove();
+            }
+            gameState.playMode = null;
+            gameState.firebaseRefs = {};
             switchMode('playMode');
         }
         
