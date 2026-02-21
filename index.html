@@ -173,6 +173,85 @@
         .player-marker.p2 { background: #ef4444; right: 20px; }
         .player-marker.p3 { background: #10b981; bottom: 20px; right: 2px; }
         .player-marker.p4 { background: #fbbf24; bottom: 20px; right: 20px; }
+
+        /* プレイヤー一覧パネル */
+        .player-list-panel {
+            background: #f8f9ff;
+            border: 1px solid #dde3ff;
+            border-radius: 12px;
+            padding: 8px;
+            margin: 10px 0;
+        }
+
+        .player-list-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 7px 8px;
+            border-radius: 8px;
+            margin: 3px 0;
+        }
+
+        .player-list-row.current-turn {
+            background: linear-gradient(135deg, rgba(102,126,234,0.13) 0%, rgba(118,75,162,0.1) 100%);
+            outline: 1.5px solid #667eea;
+        }
+
+        .player-list-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.28);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .player-list-dot.p1 { background: #3b82f6; }
+        .player-list-dot.p2 { background: #ef4444; }
+        .player-list-dot.p3 { background: #10b981; }
+        .player-list-dot.p4 { background: #fbbf24; }
+
+        .player-list-info { flex: 1; min-width: 0; }
+
+        .player-list-name {
+            font-size: 13px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .player-list-badge {
+            font-size: 9px;
+            font-weight: normal;
+            padding: 1px 5px;
+            border-radius: 999px;
+            color: white;
+        }
+
+        .player-list-pos {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .player-list-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 4px;
+        }
+
+        .player-list-item-chip {
+            background: #fbbf24;
+            color: #333;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-weight: 500;
+        }
         
         @keyframes bounce {
             0%, 100% { transform: translateY(0); }
@@ -682,14 +761,18 @@
             <!-- ゲームプレイ画面 -->
             <div id="playScreen" class="hidden">
                 <div id="currentPlayerBanner" class="current-player-banner hidden"></div>
-                
+
+                <!-- マルチプレイ用: プレイヤー一覧パネル -->
+                <div id="playerListPanel" class="player-list-panel hidden"></div>
+
+                <!-- シングルプレイ用: ステータス & インベントリ -->
                 <div class="status" id="status"></div>
-                
+
                 <div id="inventoryContainer" class="hidden">
                     <strong>アイテム:</strong>
                     <div class="inventory" id="inventory"></div>
                 </div>
-                
+
                 <div class="dice-container">
                     <div class="dice" id="dice" onclick="rollDice()">1</div>
                     <div>タップしてサイコロを振る</div>
@@ -2279,40 +2362,75 @@ API Key / Project ID / Database URL を取得して入力
         
         function updateStatus() {
             const player = gameState.players[gameState.currentPlayerIndex];
-            const status = document.getElementById('status');
-            
-            status.innerHTML = `
-                <div class="status-item">
-                    <span>現在位置:</span>
-                    <strong>${player.position + 1} / ${gameState.board.length}</strong>
-                </div>
-                ${player.skipTurn ? '<div class="status-item" style="color: red;"><span>⚠️ 1回休み中</span></div>' : ''}
-            `;
-            
-            // マルチプレイ時は現在のプレイヤー表示
+
+            // マルチプレイ: 現在プレイヤーのバナーとパネルを表示
             const banner = document.getElementById('currentPlayerBanner');
             if (gameState.playMode !== 'single') {
                 banner.textContent = `${player.name}のターン`;
                 banner.classList.remove('hidden');
+
+                // プレイヤー一覧パネルを更新
+                renderPlayerListPanel();
+
+                // シングルプレイ用要素を隠す
+                document.getElementById('status').classList.add('hidden');
+                document.getElementById('inventoryContainer').classList.add('hidden');
             } else {
+                // シングルプレイ: 従来のステータス表示
                 banner.classList.add('hidden');
+                document.getElementById('playerListPanel').classList.add('hidden');
+
+                const status = document.getElementById('status');
+                status.classList.remove('hidden');
+                status.innerHTML = `
+                    <div class="status-item">
+                        <span>現在位置:</span>
+                        <strong>${player.position + 1} / ${gameState.board.length}</strong>
+                    </div>
+                    ${player.skipTurn ? '<div class="status-item" style="color: red;"><span>⚠️ 1回休み中</span></div>' : ''}
+                `;
+
+                const inventoryContainer = document.getElementById('inventoryContainer');
+                const inventory = document.getElementById('inventory');
+                if (player.items.length > 0) {
+                    inventoryContainer.classList.remove('hidden');
+                    inventory.innerHTML = player.items.map(itemId => {
+                        const itemData = ITEMS.find(i => i.id === itemId);
+                        return `<div class="inventory-item">${itemData ? itemData.name : itemId}</div>`;
+                    }).join('');
+                } else {
+                    inventoryContainer.classList.add('hidden');
+                }
             }
-            
-            // アイテム表示
-            const inventoryContainer = document.getElementById('inventoryContainer');
-            const inventory = document.getElementById('inventory');
-            
-            if (player.items.length > 0) {
-                inventoryContainer.classList.remove('hidden');
-                inventory.innerHTML = player.items.map(itemId => {
-                    // バベルは他プレイヤーにスターとして表示（共有画面のため常にスター表示）
+        }
+
+        function renderPlayerListPanel() {
+            const panel = document.getElementById('playerListPanel');
+            panel.innerHTML = gameState.players.map((p, i) => {
+                const isCurrent = i === gameState.currentPlayerIndex;
+                const itemChips = p.items.map(itemId => {
+                    // バベルは共有画面のためスターとして表示
                     const displayId = itemId === 'babel' ? 'star' : itemId;
-                    const itemData = ITEMS.find(i => i.id === displayId);
-                    return `<div class="inventory-item">${itemData ? itemData.name : itemId}</div>`;
+                    const itemData = ITEMS.find(it => it.id === displayId);
+                    return `<span class="player-list-item-chip">${itemData ? itemData.name : itemId}</span>`;
                 }).join('');
-            } else {
-                inventoryContainer.classList.add('hidden');
-            }
+
+                return `
+                    <div class="player-list-row${isCurrent ? ' current-turn' : ''}">
+                        <div class="player-list-dot p${i + 1}"></div>
+                        <div class="player-list-info">
+                            <div class="player-list-name">
+                                ${p.name}
+                                ${isCurrent ? '<span class="player-list-badge" style="background:#667eea;">ターン中</span>' : ''}
+                                ${p.skipTurn ? '<span class="player-list-badge" style="background:#ef4444;">1回休み</span>' : ''}
+                            </div>
+                            <div class="player-list-pos">${p.position + 1} / ${gameState.board.length} マス目</div>
+                            ${p.items.length > 0 ? `<div class="player-list-items">${itemChips}</div>` : ''}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            panel.classList.remove('hidden');
         }
         
         function exitGame() {
