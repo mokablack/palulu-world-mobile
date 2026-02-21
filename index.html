@@ -790,12 +790,8 @@
                 document.getElementById('firebaseConfigForm').classList.add('hidden');
                 document.getElementById('firebaseConfigured').classList.remove('hidden');
                 document.getElementById('firebaseConfigSection').classList.add('configured');
-                document.getElementById('onlineMultiBtn').disabled = false;
-                
                 // Firebaseを初期化
                 initializeFirebase();
-            } else {
-                document.getElementById('onlineMultiBtn').disabled = true;
             }
         }
         
@@ -815,8 +811,7 @@
             document.getElementById('firebaseConfigForm').classList.add('hidden');
             document.getElementById('firebaseConfigured').classList.remove('hidden');
             document.getElementById('firebaseConfigSection').classList.add('configured');
-            document.getElementById('onlineMultiBtn').disabled = false;
-            
+
             initializeFirebase();
             showModal('info', 'Firebase設定を保存しました！\nオンラインマルチプレイが利用可能です。');
         }
@@ -833,7 +828,6 @@
             document.getElementById('firebaseConfigForm').classList.remove('hidden');
             document.getElementById('firebaseConfigured').classList.add('hidden');
             document.getElementById('firebaseConfigSection').classList.remove('configured');
-            document.getElementById('onlineMultiBtn').disabled = true;
             
             showModal('info', 'Firebase設定をクリアしました');
         }
@@ -1263,9 +1257,9 @@
                 alert('ルームIDとプレイヤー名を入力してください');
                 return;
             }
-            
+
             if (!gameState.firebaseConfig) {
-                showModal('info', 'Firebase設定が必要です。\n画面上部の設定セクションから設定してください。');
+                showModal('info', 'Firebase設定が必要です。\nホストから共有されたFirebaseのAPI KeyとDatabase URLを\n画面上部の設定セクションから入力してください。');
                 return;
             }
             
