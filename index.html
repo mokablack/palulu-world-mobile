@@ -760,8 +760,6 @@
             
             <!-- ゲームプレイ画面 -->
             <div id="playScreen" class="hidden">
-                <div id="currentPlayerBanner" class="current-player-banner hidden"></div>
-
                 <!-- マルチプレイ用: プレイヤー一覧パネル -->
                 <div id="playerListPanel" class="player-list-panel hidden"></div>
 
@@ -777,10 +775,13 @@
                     <div class="dice" id="dice" onclick="rollDice()">1</div>
                     <div>タップしてサイコロを振る</div>
                 </div>
-                
+
                 <button class="btn btn-secondary mt-20" onclick="exitGame()">ゲームを終了</button>
             </div>
-            
+
+            <!-- ターン表示 (サイコロ下・盤面上) -->
+            <div id="currentPlayerBanner" class="current-player-banner hidden"></div>
+
             <!-- ゲームボード (全モードで表示) -->
             <div class="board" id="board"></div>
         </div>
@@ -812,7 +813,7 @@
             { id: 'boots', name: '魔法の靴', effect: '次のターン移動量+2' },
             { id: 'shield', name: '盾', effect: '戻るマスの効果を1回無効化' },
             { id: 'binoculars', name: '双眼鏡', effect: 'サイコロを2回振り好きな目を選べる' },
-            { id: 'timestop', name: 'タイムストップ', effect: '次の順番のプレイヤーが1ターン休み' },
+            { id: 'timestop', name: 'タイムストップ', effect: '自分以外の全プレイヤーが1ターン休み' },
             { id: 'koshindo', name: 'コシンドスプレー', effect: '止まったマスの効果を1度だけ無効化（着地後使用）' },
             { id: 'sakasama', name: '逆さまスプレー', effect: 'サイコロの目だけ逆方向に移動（サイコロ後使用）' },
             { id: 'star', name: 'スター', effect: 'リザルトに記録される（効果なし）' },
@@ -862,7 +863,8 @@
             shieldActive: false,
             binocularsActive: false,
             koshindoActive: false,
-            sakasamaActive: false
+            sakasamaActive: false,
+            winShown: false
         };
         
         // ========== 初期化 ==========
@@ -1346,6 +1348,7 @@
         // ========== ゲーム開始 ==========
         function startSinglePlay() {
             gameState.playMode = 'single';
+            gameState.winShown = false;
             gameState.players = [{
                 name: 'プレイヤー',
                 position: 0,
@@ -1361,8 +1364,9 @@
         function startLocalMulti() {
             const count = parseInt(document.getElementById('playerCount').value);
             gameState.playMode = 'local';
+            gameState.winShown = false;
             gameState.players = [];
-            
+
             for (let i = 0; i < count; i++) {
                 const name = document.getElementById(`playerName${i}`).value || `プレイヤー${i + 1}`;
                 gameState.players.push({
@@ -1373,7 +1377,13 @@
                     babelTarget: null
                 });
             }
-            
+
+            // プレイヤー順をランダム化
+            for (let i = gameState.players.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [gameState.players[i], gameState.players[j]] = [gameState.players[j], gameState.players[i]];
+            }
+
             gameState.currentPlayerIndex = 0;
             switchMode('play');
             updateStatus();
@@ -1641,6 +1651,7 @@ API Key / Project ID / Database URL を取得して入力
                 gameState.currentPlayerIndex = saved.currentPlayerIndex;
                 gameState.playMode = 'online';
                 gameState.localPlayerIndex = gameState.players.findIndex(p => p.id === gameState.playerId);
+                gameState.winShown = false;
 
                 switchMode('play');
                 updateStatus();
@@ -1667,10 +1678,11 @@ API Key / Project ID / Database URL を取得して入力
 
             // ゲーム終了検知
             roomRef.child('winner').on('value', snap => {
-                if (!snap.exists() || gameState.mode !== 'play') return;
+                if (!snap.exists() || gameState.mode !== 'play' || gameState.winShown) return;
                 const w = snap.val();
-                if (w && w.name && w.name !== gameState.players[gameState.localPlayerIndex]?.name) {
-                    showModal('win', `${w.name}が優勝！`);
+                if (w && w.name) {
+                    gameState.winShown = true;
+                    showModal('win', buildResultText(w.name));
                 }
             });
         }
@@ -1776,9 +1788,15 @@ API Key / Project ID / Database URL を取得して入力
                     showModal('info', `「${itemData.name}」を使った！\nサイコロを2回振り、好きな目を選べる！`, () => doRollDice());
                     break;
                 case 'timestop': {
-                    const nextIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
-                    gameState.players[nextIndex].skipTurn = true;
-                    showModal('info', `「${itemData.name}」を使った！\n${gameState.players[nextIndex].name}が1ターン休みになった！`, () => doRollDice());
+                    const affected = [];
+                    gameState.players.forEach((p, i) => {
+                        if (i !== gameState.currentPlayerIndex) {
+                            p.skipTurn = true;
+                            affected.push(p.name);
+                        }
+                    });
+                    const affectedText = affected.length > 0 ? affected.join('、') : '対象なし';
+                    showModal('info', `「${itemData.name}」を使った！\n${affectedText}が1ターン休みになった！`, () => doRollDice());
                     break;
                 }
                 case 'snatcher':
@@ -1875,15 +1893,16 @@ API Key / Project ID / Database URL を取得して入力
                             announced = p;
                         }
                     });
-                    const starCount = announced.items.filter(id => id === 'star').length;
-                    const starNote = starCount > 0 ? `\n⭐ スター: ${starCount}個` : '';
                     // オンラインモード: 勝者を全プレイヤーに通知
                     if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
                         syncGameStateToFirebase();
                         gameState.firebaseRefs.roomRef.child('winner').set({ name: announced.name });
                         gameState.firebaseRefs.roomRef.child('status').set('finished');
                     }
-                    showModal('win', `${announced.name}が優勝！\n\n所持アイテム: ${announced.items.length}個${starNote}${babelNote}`);
+                    if (!gameState.winShown) {
+                        gameState.winShown = true;
+                        showModal('win', buildResultText(announced.name), babelNote);
+                    }
                 }, 500);
                 return;
             }
@@ -2335,12 +2354,15 @@ API Key / Project ID / Database URL を取得して入力
         function handleEvent(eventEffect) {
             const player = gameState.players[gameState.currentPlayerIndex];
             let callback = () => nextTurn();
-            
+            let eventText = eventEffect.eventText;
+
             if (eventEffect.eventEffect === 'item') {
                 const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
                 if (enabledItemsList.length > 0) {
                     const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                     player.items.push(randomItem.id);
+                    const dispName = randomItem.id === 'babel' ? 'スター' : randomItem.name;
+                    eventText += `\n「${dispName}」を手に入れた！`;
                     if (randomItem.id === 'babel') {
                         callback = () => { updateStatus(); promptBabelTarget(); };
                     }
@@ -2379,10 +2401,10 @@ API Key / Project ID / Database URL を取得して入力
                 callback = () => nextTurn();
             }
 
-            showModal('info', eventEffect.eventText, callback);
+            showModal('info', eventText, callback);
             updateStatus();
         }
-        
+
         function nextTurn() {
             if (gameState.playMode === 'single') return;
 
@@ -2482,14 +2504,59 @@ API Key / Project ID / Database URL を取得して入力
         }
         
         // ========== モーダル ==========
+        function buildResultText(announcedName) {
+            const ranked = gameState.players.slice().sort((a, b) => b.position - a.position);
+            const announcedIdx = ranked.findIndex(p => p.name === announcedName);
+            if (announcedIdx !== -1) {
+                const winner = ranked.splice(announcedIdx, 1)[0];
+                ranked.unshift(winner);
+            }
+            return ranked.map((p, i) => {
+                const stars = p.items.filter(id => id === 'star').length;
+                const starStr = stars > 0 ? ` ⭐×${stars}` : '';
+                const pos = i === 0 ? 'ゴール！' : `${p.position + 1}マス目`;
+                return `${i + 1}位: ${p.name}（${pos}）${starStr}`;
+            }).join('\n');
+        }
+
+        function restartOnlineGame() {
+            if (gameState.playMode !== 'online' || !gameState.firebaseRefs.roomRef) return;
+            gameState.players = gameState.players.map(p => ({
+                ...p,
+                position: 0,
+                items: [],
+                skipTurn: false,
+                babelTarget: null
+            }));
+            gameState.currentPlayerIndex = 0;
+            gameState.winShown = false;
+            renderBoard();
+            updateStatus();
+
+            const nextSnap = { players: gameState.players, currentPlayerIndex: gameState.currentPlayerIndex };
+            gameState.firebaseRefs.roomRef.update({
+                winner: null,
+                status: 'started',
+                gameSnapshot: JSON.stringify(nextSnap)
+            });
+            updateDiceInteractivity();
+        }
+
         function showModal(type, text, callback) {
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             
             if (type === 'win') {
+                const babelNote = typeof callback === 'string' ? callback : '';
+                const onlineButtons = gameState.playMode === 'online' ? `
+                    <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="closeModal(); restartOnlineGame()">再プレイ</button>
+                    <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="closeModal(); switchMode('editor')">ステージ編集</button>
+                ` : '';
                 content.innerHTML = `
-                    <div class="modal-title">🎉 ゴール！</div>
-                    <div class="modal-text">${text}</div>
+                    <div class="modal-title">🎉 ゲーム終了！</div>
+                    <div class="modal-text" style="white-space:pre-line;">${text}</div>
+                    ${babelNote ? `<div class="modal-text" style="white-space:pre-line;">${babelNote}</div>` : ''}
+                    ${onlineButtons}
                     <button class="btn btn-primary" onclick="closeModal(); switchMode('playMode')">終了</button>
                 `;
             } else if (type === 'vanished') {

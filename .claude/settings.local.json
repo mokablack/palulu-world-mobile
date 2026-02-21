@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__serena__get_current_config",
+      "mcp__serena__activate_project",
+      "Bash(cmd /c \"if not exist %USERPROFILE%\\\\.claude\\\\plans mkdir %USERPROFILE%\\\\.claude\\\\plans && echo done\")"
+    ]
+  }
+}
