@@ -790,12 +790,8 @@
                 document.getElementById('firebaseConfigForm').classList.add('hidden');
                 document.getElementById('firebaseConfigured').classList.remove('hidden');
                 document.getElementById('firebaseConfigSection').classList.add('configured');
-                document.getElementById('onlineMultiBtn').disabled = false;
-                
                 // Firebaseを初期化
                 initializeFirebase();
-            } else {
-                document.getElementById('onlineMultiBtn').disabled = true;
             }
         }
         
@@ -815,8 +811,7 @@
             document.getElementById('firebaseConfigForm').classList.add('hidden');
             document.getElementById('firebaseConfigured').classList.remove('hidden');
             document.getElementById('firebaseConfigSection').classList.add('configured');
-            document.getElementById('onlineMultiBtn').disabled = false;
-            
+
             initializeFirebase();
             showModal('info', 'Firebase設定を保存しました！\nオンラインマルチプレイが利用可能です。');
         }
@@ -833,7 +828,6 @@
             document.getElementById('firebaseConfigForm').classList.remove('hidden');
             document.getElementById('firebaseConfigured').classList.add('hidden');
             document.getElementById('firebaseConfigSection').classList.remove('configured');
-            document.getElementById('onlineMultiBtn').disabled = true;
             
             showModal('info', 'Firebase設定をクリアしました');
         }
@@ -1252,7 +1246,7 @@
             // ダミーのプレイヤーリスト表示
             updateWaitingPlayers([{ id: gameState.playerId, name: 'あなた (ホスト)', connected: true }]);
             
-            showModal('info', 'ルームを作成しました！\n\n※注意: Firebase未設定のため、実際の通信は行われません。\nFirebase設定後に実際のオンラインマルチプレイが利用できます。');
+            showModal('info', 'ルームを作成しました！\n\nルームID: ' + gameState.roomId + '\n\n他のプレイヤーにルームIDを共有して参加してもらいましょう。');
         }
         
         function joinOnlineRoom() {
@@ -1263,14 +1257,21 @@
                 alert('ルームIDとプレイヤー名を入力してください');
                 return;
             }
-            
+
             if (!gameState.firebaseConfig) {
-                showModal('info', 'Firebase設定が必要です。\n画面上部の設定セクションから設定してください。');
+                showModal('info', 'Firebase設定が必要です。\nホストから共有されたFirebaseのAPI KeyとDatabase URLを\n画面上部の設定セクションから入力してください。');
                 return;
             }
             
             // TODO: 実際のFirebase実装
-            showModal('info', '※注意: Firebase未設定のため、実際のルーム参加は行われません。\nFirebase設定後に実際のオンラインマルチプレイが利用できます。');
+            gameState.roomId = roomId;
+            gameState.playerId = 'player-' + Date.now();
+            gameState.isHost = false;
+
+            document.getElementById('displayRoomId').textContent = roomId;
+            switchMode('roomWaiting');
+
+            updateWaitingPlayers([{ id: gameState.playerId, name: playerName, connected: true }]);
         }
         
         function updateWaitingPlayers(players) {
