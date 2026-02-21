@@ -1570,16 +1570,12 @@ API Key / Project ID / Database URL を取得して入力
                 if (!snap.exists() || gameState.mode !== 'play' || gameState.isRolling) return;
 
                 const saved = JSON.parse(snap.val());
-                const remoteCurrentId = saved.players[saved.currentPlayerIndex]?.id;
-
-                // 他のプレイヤーのターンの更新のみ適用する
-                if (remoteCurrentId !== gameState.playerId) {
-                    gameState.players = saved.players;
-                    gameState.currentPlayerIndex = saved.currentPlayerIndex;
-                    renderBoard();
-                    updateStatus();
-                    updateDiceInteractivity();
-                }
+                // 常にリモートの状態を適用する（isRollingがロール中の上書きを防ぐ）
+                gameState.players = saved.players;
+                gameState.currentPlayerIndex = saved.currentPlayerIndex;
+                renderBoard();
+                updateStatus();
+                updateDiceInteractivity();
             });
 
             // ゲーム終了検知
