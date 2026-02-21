@@ -1279,10 +1279,14 @@
         // ========== モード切り替え ==========
         function switchMode(mode) {
             gameState.mode = mode;
-            
+
+            // プレイ中はモードボタンを非表示
+            const modeSelector = document.querySelector('.mode-selector');
+            modeSelector.classList.toggle('hidden', mode === 'play');
+
             // モードボタンの状態更新
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
-            
+
             // 全セクションを非表示
             document.getElementById('editorMode').classList.add('hidden');
             document.getElementById('itemsMode').classList.add('hidden');
@@ -2045,19 +2049,50 @@ API Key / Project ID / Database URL を取得して入力
             const content = document.getElementById('modalContent');
             content.innerHTML = `
                 <div class="modal-title">逆さまスプレー</div>
-                <div class="modal-text">サイコロの目: <strong>${result}</strong><br>逆方向（${result}マス戻る）に移動しますか？</div>
-                <button class="btn btn-primary" onclick="useSakasama(${result}, ${sakasamaIndex})">使う（${result}マス戻る）</button>
+                <div class="modal-text">サイコロの目: <strong>${result}</strong><br>誰かを${result}マス逆方向に移動させますか？</div>
+                <button class="btn btn-primary" onclick="promptSakasamaTarget(${result}, ${sakasamaIndex})">使う — ターゲットを選ぶ</button>
                 <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); movePlayer(${result})">使わない（${result}マス進む）</button>
             `;
             modal.classList.add('show');
         }
 
-        function useSakasama(result, itemIndex) {
-            const player = gameState.players[gameState.currentPlayerIndex];
-            player.items.splice(itemIndex, 1);
+        function promptSakasamaTarget(result, itemIndex) {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const currentIdx = gameState.currentPlayerIndex;
+            const playersHtml = gameState.players.map((p, i) => {
+                const label = i === currentIdx
+                    ? `自分（${p.name}）— ${result}マス戻る`
+                    : `${p.name} — ${result}マス戻る`;
+                return `<button class="btn btn-primary" style="margin:4px 0;width:100%;" onclick="useSakasama(${result}, ${itemIndex}, ${i})">${label}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">逆さまスプレー — ターゲット選択</div>
+                <div class="modal-text">誰を${result}マス逆方向に移動させますか？</div>
+                ${playersHtml}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); movePlayer(${result})">キャンセル（${result}マス進む）</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function useSakasama(result, itemIndex, targetPlayerIndex) {
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            currentPlayer.items.splice(itemIndex, 1);
             updateStatus();
             closeModal();
-            showModal('info', `逆さまスプレーを使った！\n${result}マス逆方向に進む！`, () => movePlayer(-result));
+
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            if (targetPlayerIndex === gameState.currentPlayerIndex) {
+                // 自分に使う: 自分が逆方向に移動
+                showModal('info', `逆さまスプレーを使った！\n${result}マス逆方向に進む！`, () => movePlayer(-result));
+            } else {
+                // 他プレイヤーに使う: そのプレイヤーを後退させ、自分は通常移動
+                const newPos = Math.max(0, targetPlayer.position - result);
+                targetPlayer.position = newPos;
+                renderBoard();
+                if (gameState.playMode === 'online') syncGameStateToFirebase();
+                showModal('info', `逆さまスプレーを使った！\n${targetPlayer.name}が${result}マス逆方向に移動！\n自分は${result}マス進む。`, () => movePlayer(result));
+            }
         }
 
         // ========== コシンドスプレー ==========
