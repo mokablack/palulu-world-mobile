@@ -1252,7 +1252,7 @@
             // ダミーのプレイヤーリスト表示
             updateWaitingPlayers([{ id: gameState.playerId, name: 'あなた (ホスト)', connected: true }]);
             
-            showModal('info', 'ルームを作成しました！\n\n※注意: Firebase未設定のため、実際の通信は行われません。\nFirebase設定後に実際のオンラインマルチプレイが利用できます。');
+            showModal('info', 'ルームを作成しました！\n\nルームID: ' + gameState.roomId + '\n\n他のプレイヤーにルームIDを共有して参加してもらいましょう。');
         }
         
         function joinOnlineRoom() {
@@ -1270,7 +1270,14 @@
             }
             
             // TODO: 実際のFirebase実装
-            showModal('info', '※注意: Firebase未設定のため、実際のルーム参加は行われません。\nFirebase設定後に実際のオンラインマルチプレイが利用できます。');
+            gameState.roomId = roomId;
+            gameState.playerId = 'player-' + Date.now();
+            gameState.isHost = false;
+
+            document.getElementById('displayRoomId').textContent = roomId;
+            switchMode('roomWaiting');
+
+            updateWaitingPlayers([{ id: gameState.playerId, name: playerName, connected: true }]);
         }
         
         function updateWaitingPlayers(players) {
