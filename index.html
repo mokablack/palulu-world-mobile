@@ -776,7 +776,6 @@
                     <div>タップしてサイコロを振る</div>
                 </div>
 
-                <button class="btn btn-secondary mt-20" onclick="exitGame()">ゲームを終了</button>
             </div>
 
             <!-- ターン表示 (サイコロ下・盤面上) -->
@@ -784,6 +783,7 @@
 
             <!-- ゲームボード (全モードで表示) -->
             <div class="board" id="board"></div>
+            <button class="btn btn-secondary mt-20 hidden" id="exitGameBtn" onclick="exitGame()">ゲームを終了</button>
         </div>
     </div>
     
@@ -1280,6 +1280,20 @@
         
         // ========== モード切り替え ==========
         function switchMode(mode) {
+            // ルーム参加中の制限
+            if (gameState.roomId) {
+                if (mode === 'editor' || mode === 'items' || mode === 'events') {
+                    if (!gameState.isHost) {
+                        showModal('info', 'エディターの操作はホストのみ可能です。');
+                        return;
+                    }
+                }
+                if (mode === 'playMode') {
+                    // ルームを退出するまではルーム待機画面に戻る
+                    mode = 'roomWaiting';
+                }
+            }
+
             gameState.mode = mode;
 
             // プレイ中はモードボタンを非表示
@@ -1324,7 +1338,10 @@
             } else if (mode === 'play') {
                 document.getElementById('playScreen').classList.remove('hidden');
             }
-            
+
+            // ゲームを終了ボタンはプレイ中のみ表示
+            document.getElementById('exitGameBtn').classList.toggle('hidden', mode !== 'play');
+
             renderBoard();
         }
         
@@ -1683,6 +1700,19 @@ API Key / Project ID / Database URL を取得して入力
                 if (w && w.name) {
                     gameState.winShown = true;
                     showModal('win', buildResultText(w.name));
+                }
+            });
+
+            // ホストによるゲーム強制終了を検知
+            roomRef.child('status').on('value', snap => {
+                if (snap.val() === 'abandoned' && gameState.mode === 'play' && !gameState.isHost) {
+                    showModal('info', 'ホストがゲームを終了しました。\nルームへの参加画面に戻ります。', () => {
+                        gameState.playMode = null;
+                        gameState.roomId = null;
+                        gameState.isHost = false;
+                        gameState.firebaseRefs = {};
+                        switchMode('joinRoom');
+                    });
                 }
             });
         }
@@ -2044,7 +2074,7 @@ API Key / Project ID / Database URL を取得して入力
         // ========== アイテム取得共通処理 ==========
         function onItemAcquired(itemData, afterCallback) {
             if (itemData.id === 'babel') {
-                showModal('info', `「スター」を手に入れた！\n（他のプレイヤーにはスターとして表示されます）`, () => {
+                showModal('info', `「バベル」を手に入れた！`, () => {
                     updateStatus();
                     promptBabelTarget(afterCallback);
                 });
@@ -2196,7 +2226,7 @@ API Key / Project ID / Database URL を取得して入力
                     if (enabledItemsList.length > 0) {
                         const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                         holder.items.push(randomItem.id);
-                        const dispName = randomItem.id === 'babel' ? 'スター' : randomItem.name;
+                        const dispName = randomItem.name;
                         showModal('info', `${holder.name}が「${dispName}」を受け取った！`, () => { updateStatus(); nextTurn(); });
                     } else {
                         nextTurn();
@@ -2361,7 +2391,7 @@ API Key / Project ID / Database URL を取得して入力
                 if (enabledItemsList.length > 0) {
                     const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                     player.items.push(randomItem.id);
-                    const dispName = randomItem.id === 'babel' ? 'スター' : randomItem.name;
+                    const dispName = randomItem.name;
                     eventText += `\n「${dispName}」を手に入れた！`;
                     if (randomItem.id === 'babel') {
                         callback = () => { updateStatus(); promptBabelTarget(); };
@@ -2492,15 +2522,21 @@ API Key / Project ID / Database URL を取得して入力
         
         function exitGame() {
             if (!confirm('ゲームを終了しますか？')) return;
-            // オンラインモード: リスナー解除
+            // オンラインモード: リスナー解除 + ホストは参加者に通知
             if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
+                if (gameState.isHost) {
+                    gameState.firebaseRefs.roomRef.child('status').set('abandoned');
+                }
                 gameState.firebaseRefs.roomRef.child('gameSnapshot').off();
                 gameState.firebaseRefs.roomRef.child('winner').off();
+                gameState.firebaseRefs.roomRef.child('status').off();
                 if (gameState.firebaseRefs.playerRef) gameState.firebaseRefs.playerRef.remove();
             }
             gameState.playMode = null;
+            gameState.roomId = null;
+            gameState.isHost = false;
             gameState.firebaseRefs = {};
-            switchMode('playMode');
+            switchMode('onlineMultiSelect');
         }
         
         // ========== モーダル ==========

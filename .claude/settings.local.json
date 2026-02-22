@@ -4,7 +4,14 @@
       "mcp__serena__get_current_config",
       "mcp__serena__activate_project",
       "Bash(cmd /c \"if not exist %USERPROFILE%\\\\.claude\\\\plans mkdir %USERPROFILE%\\\\.claude\\\\plans && echo done\")",
-      "mcp__serena__initial_instructions"
+      "mcp__serena__initial_instructions",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_fill_form",
+      "mcp__playwright__browser_select_option",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_run_code"
     ]
   }
 }

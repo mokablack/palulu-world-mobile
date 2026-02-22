@@ -1,5 +1,6 @@
 #開発要項
 text/
+.playwright-mcp/
 
 # エディタ関連
 .vscode/
