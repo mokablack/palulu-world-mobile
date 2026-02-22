@@ -810,21 +810,29 @@
         };
         
         const ITEMS = [
-            { id: 'boots', name: '魔法の靴', effect: '次のターン移動量+2' },
-            { id: 'shield', name: '盾', effect: '戻るマスの効果を1回無効化' },
-            { id: 'binoculars', name: '双眼鏡', effect: 'サイコロを2回振り好きな目を選べる' },
-            { id: 'timestop', name: 'タイムストップ', effect: '自分以外の全プレイヤーが1ターン休み' },
-            { id: 'koshindo', name: 'コシンドスプレー', effect: '止まったマスの効果を1度だけ無効化（着地後使用）' },
-            { id: 'sakasama', name: '逆さまスプレー', effect: 'サイコロの目だけ逆方向に移動（サイコロ後使用）' },
-            { id: 'star', name: 'スター', effect: 'リザルトに記録される（効果なし）' },
-            { id: 'curseddoll', name: '呪われた人形', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
-            { id: 'babel', name: 'バベル', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
-            { id: 'snatcher', name: 'スナッチャー', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
-            { id: 'nail', name: '釘', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
-            { id: 'hammer', name: 'トンカチ', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
-            { id: 'kagemaiha', name: '影舞葉', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
+            { id: 'boots',      name: '魔法の靴',         icon: '👟', effect: '次のターン移動量+2' },
+            { id: 'shield',     name: '盾',               icon: '🛡️', effect: '戻るマスの効果を1回無効化' },
+            { id: 'binoculars', name: '双眼鏡',           icon: '🔭', effect: 'サイコロを2回振り好きな目を選べる' },
+            { id: 'timestop',   name: 'タイムストップ',   icon: '⏸️', effect: '自分以外の全プレイヤーが1ターン休み' },
+            { id: 'koshindo',   name: 'コシンドスプレー', icon: '💨', effect: '止まったマスの効果を1度だけ無効化（着地後使用）' },
+            { id: 'sakasama',   name: '逆さまスプレー',   icon: '🔄', effect: 'サイコロの目だけ逆方向に移動（サイコロ後使用）' },
+            { id: 'star',       name: 'スター',           icon: '⭐', effect: 'リザルトに記録される（効果なし）' },
+            { id: 'curseddoll', name: '呪われた人形',     icon: '🎎', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
+            { id: 'babel',      name: 'バベル',           icon: '🌀', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
+            { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
+            { id: 'nail',       name: '釘',               icon: '📌', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
+            { id: 'hammer',     name: 'トンカチ',         icon: '🔨', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
+            { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
         ];
         
+        // アイテム表示ラベル（アイコン + 名前）
+        function itemLabel(itemId) {
+            const displayId = itemId === 'babel' ? 'star' : itemId;
+            const item = ITEMS.find(i => i.id === displayId);
+            if (!item) return itemId;
+            return `${item.icon} ${item.name}`;
+        }
+
         const EVENTS = [
             { id: 'merchant', title: '怪しい商人', text: '怪しい商人に出会った。', effect: 'merchant' },
             { id: 'wind', title: '突風', text: '突風が吹いた！2マス戻される...', effect: -2 },
@@ -1206,7 +1214,7 @@
                 div.innerHTML = `
                     <input type="checkbox" id="item-${item.id}" ${gameState.enabledItems[item.id] ? 'checked' : ''} onchange="toggleItem('${item.id}')">
                     <div class="list-item-content">
-                        <div class="list-item-title">${item.name}</div>
+                        <div class="list-item-title">${item.icon} ${item.name}</div>
                         <div class="list-item-desc">${item.effect}</div>
                     </div>
                 `;
@@ -1802,7 +1810,7 @@ API Key / Project ID / Database URL を取得して入力
                 if (!itemData) return '';
                 return `
                     <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin:6px 0;text-align:left;">
-                        <div style="font-weight:bold;margin-bottom:4px;">${itemData.name}</div>
+                        <div style="font-weight:bold;margin-bottom:4px;">${itemData.icon} ${itemData.name}</div>
                         <div style="font-size:12px;color:#666;margin-bottom:8px;">${itemData.effect}</div>
                         <button class="btn btn-primary" style="font-size:13px;padding:6px 14px;" onclick="useItem(${index})">使う</button>
                     </div>
@@ -1842,15 +1850,15 @@ API Key / Project ID / Database URL を取得して入力
             switch (itemId) {
                 case 'boots':
                     gameState.bootsActive = true;
-                    showModal('info', `「${itemData.name}」を使った！\n移動量に+2される！`, () => doRollDice());
+                    showModal('info', `${itemLabel('boots')} を使った！\n移動量に+2される！`, () => doRollDice());
                     break;
                 case 'shield':
                     gameState.shieldActive = true;
-                    showModal('info', `「${itemData.name}」を使った！\n次に戻るマスの効果を無効化する！`, () => doRollDice());
+                    showModal('info', `${itemLabel('shield')} を使った！\n次に戻るマスの効果を無効化する！`, () => doRollDice());
                     break;
                 case 'binoculars':
                     gameState.binocularsActive = true;
-                    showModal('info', `「${itemData.name}」を使った！\nサイコロを2回振り、好きな目を選べる！`, () => doRollDice());
+                    showModal('info', `${itemLabel('binoculars')} を使った！\nサイコロを2回振り、好きな目を選べる！`, () => doRollDice());
                     break;
                 case 'timestop': {
                     const affected = [];
@@ -1861,7 +1869,7 @@ API Key / Project ID / Database URL を取得して入力
                         }
                     });
                     const affectedText = affected.length > 0 ? affected.join('、') : '対象なし（全員免疫中）';
-                    showModal('info', `「${itemData.name}」を使った！\n${affectedText}が1ターン休みになった！`, () => doRollDice());
+                    showModal('info', `${itemLabel('timestop')} を使った！\n${affectedText}が1ターン休みになった！`, () => doRollDice());
                     break;
                 }
                 case 'snatcher':
@@ -1880,7 +1888,7 @@ API Key / Project ID / Database URL を取得して入力
                     }
                     if (samePos.length === 1) {
                         samePos[0].skipTurn = true;
-                        showModal('info', `「${itemData.name}」を使った！\n${samePos[0].name}が1回休みになった！`, () => doRollDice());
+                        showModal('info', `${itemLabel('hammer')} を使った！\n${samePos[0].name}が1回休みになった！`, () => doRollDice());
                         break;
                     }
                     promptHammerTarget();
@@ -2188,7 +2196,7 @@ API Key / Project ID / Database URL を取得して入力
                     if (afterCallback) afterCallback();
                 });
             } else {
-                showModal('info', `「${itemData.name}」を手に入れた！`, () => {
+                showModal('info', `${itemData.icon} ${itemData.name} を手に入れた！`, () => {
                     updateStatus();
                     if (afterCallback) afterCallback();
                 });
@@ -2358,10 +2366,7 @@ API Key / Project ID / Database URL を取得して入力
                 return;
             }
             const itemsHtml = player.items.map((itemId, index) => {
-                const displayId = itemId === 'babel' ? 'star' : itemId;
-                const itemData = ITEMS.find(i => i.id === displayId);
-                const name = itemData ? itemData.name : itemId;
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="snatcherPickTarget(${index})">${name}</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="snatcherPickTarget(${index})">${itemLabel(itemId)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">スナッチャー</div>
@@ -2396,10 +2401,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const itemsHtml = targetPlayer.items.map((itemId, index) => {
-                const displayId = itemId === 'babel' ? 'star' : itemId;
-                const itemData = ITEMS.find(i => i.id === displayId);
-                const name = itemData ? itemData.name : itemId;
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="executeSnatch(${ownItemIndex}, ${targetPlayerIndex}, ${index})">${name}</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="executeSnatch(${ownItemIndex}, ${targetPlayerIndex}, ${index})">${itemLabel(itemId)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">スナッチャー</div>
@@ -2417,13 +2419,9 @@ API Key / Project ID / Database URL を取得して入力
             const targetItemId = targetPlayer.items[targetItemIndex];
             player.items[ownItemIndex] = targetItemId;
             targetPlayer.items[targetItemIndex] = ownItemId;
-            const ownDispId = ownItemId === 'babel' ? 'star' : ownItemId;
-            const tgtDispId = targetItemId === 'babel' ? 'star' : targetItemId;
-            const ownName = (ITEMS.find(i => i.id === ownDispId) || {}).name || ownItemId;
-            const tgtName = (ITEMS.find(i => i.id === tgtDispId) || {}).name || targetItemId;
             closeModal();
             updateStatus();
-            showModal('info', `スナッチャー発動！\n「${ownName}」と「${tgtName}」を交換した！`, () => doRollDice());
+            showModal('info', `スナッチャー発動！\n「${itemLabel(ownItemId)}」と「${itemLabel(targetItemId)}」を交換した！`, () => doRollDice());
         }
 
         // ========== トンカチ ==========
@@ -2682,8 +2680,7 @@ API Key / Project ID / Database URL を取得して入力
                 if (enabledItemsList.length > 0) {
                     const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                     player.items.push(randomItem.id);
-                    const dispName = randomItem.name;
-                    eventText += `\n「${dispName}」を手に入れた！`;
+                    eventText += `\n${randomItem.icon} ${randomItem.name} を手に入れた！`;
                     if (randomItem.id === 'babel') {
                         callback = () => { updateStatus(); promptBabelTarget(); };
                     }
@@ -2785,7 +2782,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const itemButtons = items3.map(item =>
-                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantPickItem('${item.id}')">${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantPickItem('${item.id}')">${item.icon} ${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
             ).join('');
             const tradeBtn = player.items.length > 0
                 ? `<button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="merchantOfferTrade()">アイテムを1つ渡して2つ選ぶ</button>`
@@ -2813,10 +2810,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const ownItemsHtml = player.items.map((itemId, index) => {
-                const displayId = itemId === 'babel' ? 'star' : itemId;
-                const itemData = ITEMS.find(i => i.id === displayId);
-                const name = itemData ? itemData.name : itemId;
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantTradeGiveItem(${index})">${name}</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantTradeGiveItem(${index})">${itemLabel(itemId)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">怪しい商人</div>
@@ -2841,7 +2835,7 @@ API Key / Project ID / Database URL を取得して入力
             const content = document.getElementById('modalContent');
             const pickNum = picked.length + 1;
             const itemButtons = remaining.map(item =>
-                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantSelectItem('${item.id}')">${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantSelectItem('${item.id}')">${item.icon} ${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
             ).join('');
             content.innerHTML = `
                 <div class="modal-title">怪しい商人</div>
@@ -2863,10 +2857,7 @@ API Key / Project ID / Database URL を取得して入力
                 merchantPickFromRemaining(newRemaining, newPicked);
             } else {
                 closeModal();
-                const acquiredNames = newPicked.map(id => {
-                    const data = ITEMS.find(i => i.id === (id === 'babel' ? 'star' : id));
-                    return data ? data.name : id;
-                }).join('、');
+                const acquiredNames = newPicked.map(id => itemLabel(id)).join('、');
                 showModal('info', `商人との取引完了！\n「${acquiredNames}」を手に入れた！`, () => nextTurn());
             }
         }
@@ -2877,7 +2868,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const itemButtons = items3.map(item =>
-                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantPickItem('${item.id}')">${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantPickItem('${item.id}')">${item.icon} ${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
             ).join('');
             const tradeBtn = player.items.length > 0
                 ? `<button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="merchantOfferTrade()">アイテムを1つ渡して2つ選ぶ</button>`
@@ -2959,8 +2950,7 @@ API Key / Project ID / Database URL を取得して入力
                 if (player.items.length > 0) {
                     inventoryContainer.classList.remove('hidden');
                     inventory.innerHTML = player.items.map(itemId => {
-                        const itemData = ITEMS.find(i => i.id === itemId);
-                        return `<div class="inventory-item">${itemData ? itemData.name : itemId}</div>`;
+                        return `<div class="inventory-item">${itemLabel(itemId)}</div>`;
                     }).join('');
                 } else {
                     inventoryContainer.classList.add('hidden');
@@ -2973,10 +2963,7 @@ API Key / Project ID / Database URL を取得して入力
             panel.innerHTML = gameState.players.map((p, i) => {
                 const isCurrent = i === gameState.currentPlayerIndex;
                 const itemChips = p.items.map(itemId => {
-                    // バベルは共有画面のためスターとして表示
-                    const displayId = itemId === 'babel' ? 'star' : itemId;
-                    const itemData = ITEMS.find(it => it.id === displayId);
-                    return `<span class="player-list-item-chip">${itemData ? itemData.name : itemId}</span>`;
+                    return `<span class="player-list-item-chip">${itemLabel(itemId)}</span>`;
                 }).join('');
 
                 return `
