@@ -821,18 +821,26 @@
             { id: 'babel', name: 'バベル', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
             { id: 'snatcher', name: 'スナッチャー', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
             { id: 'nail', name: '釘', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
-            { id: 'hammer', name: 'トンカチ', effect: '同じマスにいる他プレイヤー1人を1回休みにする' }
+            { id: 'hammer', name: 'トンカチ', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
+            { id: 'kagemaiha', name: '影舞葉', effect: '1つ下の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
         ];
         
         const EVENTS = [
-            { id: 'merchant', title: '怪しい商人', text: '怪しい商人に出会った。アイテムをもらった！', effect: 'item' },
+            { id: 'merchant', title: '怪しい商人', text: '怪しい商人に出会った。', effect: 'merchant' },
             { id: 'wind', title: '突風', text: '突風が吹いた！2マス戻される...', effect: -2 },
             { id: 'goddess', title: '幸運の女神', text: '幸運の女神が微笑んだ！もう一度サイコロを振れる！', effect: 'extraTurn' },
             { id: 'pit', title: '落とし穴', text: '落とし穴に落ちた！1回休み...', effect: 'skip' },
             { id: 'tailwind', title: '追い風', text: '追い風に乗った！3マス前進する', effect: 3 },
             { id: 'storm', title: '嵐', text: '嵐が来た！自分以外の全プレイヤーが1マス後退する', effect: 'storm' },
             { id: 'blackhole', title: 'ブラックホール', text: 'ブラックホールだ！気をつけろ！', effect: 'blackhole' },
-            { id: 'whitehole', title: 'ホワイトホール', text: 'ホワイトホールから吐き出された！', effect: 'whitehole' }
+            { id: 'whitehole', title: 'ホワイトホール', text: 'ホワイトホールから吐き出された！', effect: 'whitehole' },
+            { id: 'mask', title: '覆面', text: '覆面に包まれた！別の覆面マスへワープ！', effect: 'mask' },
+            { id: 'average', title: '平均', text: '平均の力が働いた！', effect: 'average' },
+            { id: 'forceend', title: 'ゲームをやめろ！', text: 'ゲームを強制終了！！', effect: 'forceend' },
+            { id: 'nameback', title: '自分の名前の数だけ戻る', text: '名前の文字数分だけ戻ってしまった！', effect: 'nameback' },
+            { id: 'ganbare', title: 'がんばれ！', text: 'がんばれ！', effect: 'ganbare' },
+            { id: 'resetall', title: '仕切り直し', text: '仕切り直し！全員スタートに戻る！', effect: 'resetall' },
+            { id: 'newstart', title: 'ここをスタートとする！', text: 'ここからが本当のスタートだ！', effect: 'newstart' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -1770,7 +1778,7 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             // サイコロ前に使えるアイテムがある場合のみ確認を出す
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer'];
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha'];
             const hasPreRollItems = currentPlayer.items.some(id => PRE_ROLL_ITEMS.includes(id));
             if (hasPreRollItems) {
                 promptItemUsage();
@@ -1784,7 +1792,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
 
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer'];
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha'];
             const usableEntries = player.items
                 .map((itemId, index) => ({ itemId, index }))
                 .filter(({ itemId }) => PRE_ROLL_ITEMS.includes(itemId));
@@ -1878,9 +1886,39 @@ API Key / Project ID / Database URL を取得して入力
                     promptHammerTarget();
                     break;
                 }
+                case 'kagemaiha':
+                    player.items.splice(itemIndex, 1);
+                    useKagemaiha();
+                    break;
                 default:
                     doRollDice();
             }
+        }
+
+        function useKagemaiha() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            if (gameState.players.length < 2) {
+                showModal('info', '（1人プレイのため影舞葉の効果は発動しません）', () => doRollDice());
+                return;
+            }
+            const ranked = gameState.players
+                .map((p, i) => ({ player: p, index: i }))
+                .sort((a, b) => b.player.position - a.player.position);
+            const myRankIdx = ranked.findIndex(r => r.index === gameState.currentPlayerIndex);
+            if (myRankIdx === ranked.length - 1) {
+                showModal('info', `${player.name}はビリのため、影舞葉の効果が発動しなかった...`, () => doRollDice());
+                return;
+            }
+            const target = ranked[myRankIdx + 1];
+            const destPos = target.player.position;
+            const targetName = target.player.name;
+            updateStatus();
+            showModal('info', `影舞葉！${targetName}のマス（${destPos + 1}マス目）へ移動！\nサイコロは振れず、そのマスの効果を受ける。`, () => {
+                player.position = destPos;
+                renderBoard();
+                updateStatus();
+                promptKoshindoOrEffect(destPos);
+            });
         }
 
         function doRollDice() {
@@ -2586,6 +2624,58 @@ API Key / Project ID / Database URL を取得して入力
             let callback = () => nextTurn();
             let eventText = eventEffect.eventText;
 
+            // 商人：特殊UIなので早期リターン
+            if (eventEffect.eventEffect === 'merchant') {
+                showMerchantDialog();
+                return;
+            }
+
+            // がんばれ！：大きなテキスト表示
+            if (eventEffect.eventEffect === 'ganbare') {
+                const modal = document.getElementById('modal');
+                const content = document.getElementById('modalContent');
+                content.innerHTML = `
+                    <div style="font-size:56px;font-weight:bold;text-align:center;padding:20px 10px;">がんばれ！</div>
+                    <button class="btn btn-primary" onclick="closeModal(); nextTurn()">OK</button>
+                `;
+                modal.classList.add('show');
+                updateStatus();
+                return;
+            }
+
+            // ここをスタートとする！：盤面再構成
+            if (eventEffect.eventEffect === 'newstart') {
+                const newStartIdx = player.position;
+                if (newStartIdx === 0) {
+                    showModal('info', 'すでにスタートマスです。何も起きなかった。', () => nextTurn());
+                    return;
+                }
+                showModal('info', eventText, () => {
+                    gameState.board = gameState.board.slice(newStartIdx);
+                    gameState.board[0] = { ...TILE_TYPES.START };
+                    gameState.players.forEach(p => {
+                        p.position = p.position < newStartIdx ? 0 : p.position - newStartIdx;
+                    });
+                    renderBoard();
+                    updateStatus();
+                    nextTurn();
+                });
+                return;
+            }
+
+            // ゲームをやめろ！：強制リザルト
+            if (eventEffect.eventEffect === 'forceend') {
+                showModal('info', eventText, () => {
+                    if (!gameState.winShown) {
+                        gameState.winShown = true;
+                        const ranked = gameState.players.slice().sort((a, b) => b.position - a.position);
+                        showModal('win', buildResultText(ranked[0].name), '');
+                    }
+                });
+                updateStatus();
+                return;
+            }
+
             if (eventEffect.eventEffect === 'item') {
                 const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
                 if (enabledItemsList.length > 0) {
@@ -2629,10 +2719,175 @@ API Key / Project ID / Database URL を取得して入力
             } else if (eventEffect.eventEffect === 'whitehole') {
                 // 通常着地では何も起きない
                 callback = () => nextTurn();
+            } else if (eventEffect.eventEffect === 'mask') {
+                callback = () => {
+                    const maskIndices = [];
+                    gameState.board.forEach((tile, idx) => {
+                        if (tile.effect && tile.effect.type === 'event' && tile.effect.eventId === 'mask') {
+                            maskIndices.push(idx);
+                        }
+                    });
+                    const otherMasks = maskIndices.filter(idx => idx !== player.position);
+                    if (otherMasks.length === 0) {
+                        showModal('info', '別の覆面マスが見つからない...何も起きなかった。', () => nextTurn());
+                    } else {
+                        const dest = otherMasks[Math.floor(Math.random() * otherMasks.length)];
+                        player.position = dest;
+                        renderBoard();
+                        updateStatus();
+                        showModal('info', `${dest + 1}マス目の覆面マスへワープした！`, () => nextTurn());
+                    }
+                };
+            } else if (eventEffect.eventEffect === 'average') {
+                callback = () => {
+                    const targetPlayer = gameState.players[Math.floor(Math.random() * gameState.players.length)];
+                    const dest = targetPlayer.position;
+                    gameState.players.forEach(p => { p.position = dest; });
+                    renderBoard();
+                    updateStatus();
+                    showModal('info', `${targetPlayer.name}のマス（${dest + 1}マス目）に全員集合！`, () => nextTurn());
+                };
+            } else if (eventEffect.eventEffect === 'nameback') {
+                callback = () => {
+                    const steps = player.name.length;
+                    const newPos = Math.max(0, player.position - steps);
+                    player.position = newPos;
+                    renderBoard();
+                    updateStatus();
+                    showModal('info', `${player.name}は${steps}文字！${steps}マス戻った...`, () => nextTurn());
+                };
+            } else if (eventEffect.eventEffect === 'resetall') {
+                callback = () => {
+                    gameState.players.forEach(p => { p.position = 0; });
+                    renderBoard();
+                    updateStatus();
+                    nextTurn();
+                };
             }
 
             showModal('info', eventText, callback);
             updateStatus();
+        }
+
+        // ========== 怪しい商人UI ==========
+        function showMerchantDialog() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
+            if (enabledItemsList.length === 0) {
+                showModal('info', '怪しい商人に出会ったが、商品が何もなかった...', () => nextTurn());
+                return;
+            }
+            const shuffled = enabledItemsList.slice().sort(() => Math.random() - 0.5);
+            const items3 = shuffled.slice(0, Math.min(3, shuffled.length));
+            window.merchantItems3 = items3;
+
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const itemButtons = items3.map(item =>
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantPickItem('${item.id}')">${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
+            ).join('');
+            const tradeBtn = player.items.length > 0
+                ? `<button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="merchantOfferTrade()">アイテムを1つ渡して2つ選ぶ</button>`
+                : '';
+            content.innerHTML = `
+                <div class="modal-title">怪しい商人</div>
+                <div class="modal-text">怪しい商人に出会った。1つ選んでください：</div>
+                ${itemButtons}
+                ${tradeBtn}
+            `;
+            modal.classList.add('show');
+            updateStatus();
+        }
+
+        function merchantPickItem(itemId) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const itemData = ITEMS.find(i => i.id === itemId);
+            closeModal();
+            player.items.push(itemId);
+            onItemAcquired(itemData, () => nextTurn());
+        }
+
+        function merchantOfferTrade() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const ownItemsHtml = player.items.map((itemId, index) => {
+                const displayId = itemId === 'babel' ? 'star' : itemId;
+                const itemData = ITEMS.find(i => i.id === displayId);
+                const name = itemData ? itemData.name : itemId;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantTradeGiveItem(${index})">${name}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">怪しい商人</div>
+                <div class="modal-text">渡すアイテムを選んでください：</div>
+                ${ownItemsHtml}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="merchantShowOptions3()">キャンセル（1つ選ぶに戻る）</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function merchantTradeGiveItem(ownItemIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(ownItemIndex, 1);
+            updateStatus();
+            merchantPickFromRemaining(window.merchantItems3, []);
+        }
+
+        function merchantPickFromRemaining(remaining, picked) {
+            window.merchantRemaining = remaining;
+            window.merchantPicked = picked;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const pickNum = picked.length + 1;
+            const itemButtons = remaining.map(item =>
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantSelectItem('${item.id}')">${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
+            ).join('');
+            content.innerHTML = `
+                <div class="modal-title">怪しい商人</div>
+                <div class="modal-text">${pickNum}つ目を選んでください（残り${2 - picked.length}個選べます）：</div>
+                ${itemButtons}
+            `;
+            modal.classList.add('show');
+        }
+
+        function merchantSelectItem(itemId) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const remaining = window.merchantRemaining || [];
+            const picked = window.merchantPicked || [];
+            player.items.push(itemId);
+            updateStatus();
+            const newPicked = [...picked, itemId];
+            const newRemaining = remaining.filter(i => i.id !== itemId);
+            if (newPicked.length < 2 && newRemaining.length > 0) {
+                merchantPickFromRemaining(newRemaining, newPicked);
+            } else {
+                closeModal();
+                const acquiredNames = newPicked.map(id => {
+                    const data = ITEMS.find(i => i.id === (id === 'babel' ? 'star' : id));
+                    return data ? data.name : id;
+                }).join('、');
+                showModal('info', `商人との取引完了！\n「${acquiredNames}」を手に入れた！`, () => nextTurn());
+            }
+        }
+
+        function merchantShowOptions3() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const items3 = window.merchantItems3;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const itemButtons = items3.map(item =>
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="merchantPickItem('${item.id}')">${item.name}<br><small style="font-size:11px;opacity:0.8;">${item.effect}</small></button>`
+            ).join('');
+            const tradeBtn = player.items.length > 0
+                ? `<button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="merchantOfferTrade()">アイテムを1つ渡して2つ選ぶ</button>`
+                : '';
+            content.innerHTML = `
+                <div class="modal-title">怪しい商人</div>
+                <div class="modal-text">怪しい商人に出会った。1つ選んでください：</div>
+                ${itemButtons}
+                ${tradeBtn}
+            `;
+            modal.classList.add('show');
         }
 
         function nextTurn() {
