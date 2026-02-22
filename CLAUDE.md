@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Board Editor** — design custom boards with a tile palette
 - **Single-player** — solo play
 - **Local Multiplayer** — 2–4 players on the same device
-- **Online Multiplayer** — Firebase-backed room system (stubbed with TODOs)
+- **Online Multiplayer** — Firebase-backed room system (partially implemented)
 
 No build tooling. Open `index.html` directly in any browser.
 
@@ -19,18 +19,19 @@ No build tooling. Open `index.html` directly in any browser.
 
 ## Architecture
 
-**Single-file application** — all HTML, CSS, and JavaScript live in `index.html`. No npm, no build step, no external dependencies (Firebase SDK is the only planned exception, not yet loaded).
+**Single-file application** — all HTML, CSS, and JavaScript live in `index.html` (~3100 lines). No npm, no build step.
 
 ### `index.html` Layout
 
 | Lines (approx.) | Content |
 |---|---|
-| 1–703 | HTML structure + inline `<style>` block |
-| 704–end | `<script>` block with all game logic |
+| 1–612 | HTML structure + inline `<style>` block |
+| 796–798 | Firebase SDK `<script>` tags (v8 CDN) |
+| 800–3097 | `<script>` block with all game logic |
 
 ### Script Section Order (delimited by `// ========== ... ==========`)
 
-1. Data definitions (`TILE_TYPES`, `ITEMS`, `EVENTS`)
+1. Data definitions (`TILE_TYPES`, `ITEMS`, `EVENTS`) + `itemLabel()` helper
 2. Game state (`gameState`)
 3. Initialization (`init()`)
 4. Firebase configuration
@@ -39,12 +40,14 @@ No build tooling. Open `index.html` directly in any browser.
 7. Item management
 8. Event management
 9. Stage save/load
-10. Mode switching
+10. Mode switching (`switchMode`)
 11. Player setup
 12. Game start logic
-13. Online multiplayer (stubbed)
+13. Online multiplayer
 14. Game play mechanics — dice, movement, tile effects, item usage
-15. Modal utilities
+15. 怪しい商人UI (`showMerchantDialog` and related)
+16. `nextTurn()` + turn flow
+17. Modal utilities
 
 ---
 
@@ -69,6 +72,15 @@ let gameState = {
     currentPlayerIndex: 0,
     diceValue: 1,
     isRolling: false,
+    winShown: false,
+    nailTraps: {},                      // { [tileIndex]: placingPlayerIndex }
+
+    // Item effect flags (active for current turn)
+    bootsActive: false,
+    shieldActive: false,
+    binocularsActive: false,
+    koshindoActive: false,
+    sakasamaActive: false,
 
     // Firebase
     firebaseConfig: null,
@@ -93,7 +105,9 @@ let gameState = {
         eventId?: string,
         eventTitle?: string,
         eventText?: string,
-        eventEffect?: number | 'item' | 'extraTurn' | 'skip' | 'storm' | 'blackhole' | 'whitehole'
+        eventEffect?: number | 'merchant' | 'extraTurn' | 'skip' | 'storm'
+                    | 'blackhole' | 'whitehole' | 'mask' | 'average'
+                    | 'forceend' | 'nameback' | 'ganbare' | 'resetall' | 'newstart'
     }
 }
 ```
@@ -106,6 +120,7 @@ let gameState = {
     position: number,       // Index into gameState.board
     items: string[],        // Collected item IDs
     skipTurn: boolean,
+    immuneTurns: number,    // Turns remaining with negative-effect immunity
     babelTarget: number | null  // Player index for バベル item effect
 }
 ```
@@ -115,30 +130,40 @@ let gameState = {
 ```javascript
 const TILE_TYPES = { NORMAL, FORWARD, BACKWARD, ITEM, EVENT, START, GOAL };
 
-// Items (10 total)
+// Items (13 total) — each has id, name, icon (emoji), effect (string)
 const ITEMS = [
-    { id: 'boots',      name: '魔法の靴',         effect: '次のターン移動量+2' },
-    { id: 'shield',     name: '盾',               effect: '戻るマスの効果を1回無効化' },
-    { id: 'binoculars', name: '双眼鏡',           effect: 'サイコロを2回振り好きな目を選べる' },
-    { id: 'timestop',   name: 'タイムストップ',   effect: '次の順番のプレイヤーが1ターン休み' },
-    { id: 'koshindo',   name: 'コシンドスプレー', effect: '止まったマスの効果を1度だけ無効化（着地後使用）' },
-    { id: 'sakasama',   name: '逆さまスプレー',   effect: 'サイコロの目だけ逆方向に移動（サイコロ後使用）' },
-    { id: 'star',       name: 'スター',           effect: 'リザルトに記録される（効果なし）' },
-    { id: 'curseddoll', name: '呪われた人形',     effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
-    { id: 'babel',      name: 'バベル',           effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
-    { id: 'snatcher',   name: 'スナッチャー',     effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
+    { id: 'boots',      name: '魔法の靴',         icon: '👟', ... },
+    { id: 'shield',     name: '盾',               icon: '🛡️', ... },
+    { id: 'binoculars', name: '双眼鏡',           icon: '🔭', ... },
+    { id: 'timestop',   name: 'タイムストップ',   icon: '⏸️', ... },
+    { id: 'koshindo',   name: 'コシンドスプレー', icon: '💨', ... },
+    { id: 'sakasama',   name: '逆さまスプレー',   icon: '🔄', ... },
+    { id: 'star',       name: 'スター',           icon: '⭐', ... },
+    { id: 'curseddoll', name: '呪われた人形',     icon: '🎎', ... },
+    { id: 'babel',      name: 'バベル',           icon: '🌀', ... },  // displayed as star externally
+    { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', ... },
+    { id: 'nail',       name: '釘',               icon: '📌', ... },
+    { id: 'hammer',     name: 'トンカチ',         icon: '🔨', ... },
+    { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', ... },
 ];
 
-// Events (8 total)
+// Events (15 total)
 const EVENTS = [
-    { id: 'merchant',  title: '怪しい商人',     text: '...', effect: 'item' },
-    { id: 'wind',      title: '突風',           text: '...', effect: -2 },
-    { id: 'goddess',   title: '幸運の女神',     text: '...', effect: 'extraTurn' },
-    { id: 'pit',       title: '落とし穴',       text: '...', effect: 'skip' },
-    { id: 'tailwind',  title: '追い風',         text: '...', effect: 3 },
-    { id: 'storm',     title: '嵐',             text: '...', effect: 'storm' },
-    { id: 'blackhole', title: 'ブラックホール', text: '...', effect: 'blackhole' },
-    { id: 'whitehole', title: 'ホワイトホール', text: '...', effect: 'whitehole' },
+    { id: 'merchant',  effect: 'merchant'  },  // 3択アイテム選択UI
+    { id: 'wind',      effect: -2          },
+    { id: 'goddess',   effect: 'extraTurn' },
+    { id: 'pit',       effect: 'skip'      },
+    { id: 'tailwind',  effect: 3           },
+    { id: 'storm',     effect: 'storm'     },
+    { id: 'blackhole', effect: 'blackhole' },
+    { id: 'whitehole', effect: 'whitehole' },
+    { id: 'mask',      effect: 'mask'      },  // 別の覆面マスへワープ
+    { id: 'average',   effect: 'average'   },  // 全員同じマスへ
+    { id: 'forceend',  effect: 'forceend'  },  // 強制ゲーム終了
+    { id: 'nameback',  effect: 'nameback'  },  // 名前文字数分戻る
+    { id: 'ganbare',   effect: 'ganbare'   },  // 大テキスト表示のみ
+    { id: 'resetall',  effect: 'resetall'  },  // 全員スタートへ
+    { id: 'newstart',  effect: 'newstart'  },  // 盤面再構成
 ];
 ```
 
@@ -149,16 +174,32 @@ const EVENTS = [
 | Function | Purpose |
 |---|---|
 | `init()` | Entry point on page load |
-| `switchMode(mode)` | Navigate between editor / single / local / online |
+| `itemLabel(itemId)` | Returns `"icon name"` string for display; resolves `babel`→`star` |
+| `switchMode(mode)` | Navigate between editor / items / events / play screens |
 | `initializeBoard()` | Reset board to default |
 | `renderBoard()` | Re-render board grid from `gameState.board` |
 | `saveStage()` / `loadStage()` | Persist/restore board to localStorage |
 | `startSinglePlay()` / `startLocalMulti()` | Transition to active gameplay |
 | `rollDice()` | Animate dice and compute movement |
-| `movePlayer(steps)` | Advance current player and apply tile effect |
-| `executeTileEffect(tile)` | Evaluate effect of landing on a tile |
-| `showModal(type, message, callback?)` | Display info or confirm modal |
-| `createOnlineRoom()` / `joinOnlineRoom()` | Online stub functions |
+| `movePlayer(steps)` | Advance current player with step-by-step animation |
+| `executeTileEffect(tile)` | Evaluate effect on landing; checks immunity + curseddoll first |
+| `handleEvent(eventEffect)` | Dispatch event effects including all new event types |
+| `showMerchantDialog()` | 3択アイテム選択UI for 怪しい商人 event |
+| `useKagemaiha()` | Move to 1-rank-above player's tile, apply tile effect without dice |
+| `nextTurn()` | Advance turn; handles skip, nailPlacement prompt |
+| `showModal(type, message, callback?)` | `type`: `'info'` \| `'win'` \| `'vanished'` |
+| `buildResultText(winnerName)` | Build ranked result string for win modal |
+| `createOnlineRoom()` / `joinOnlineRoom()` | Online multiplayer functions |
+
+### Pre-roll items (usable before dice)
+
+`PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha']`
+
+Post-roll items (`koshindo`, `sakasama`) are triggered after landing.
+
+### babel display rule
+
+`babel` is stored as `'babel'` in `player.items` but displayed as `⭐ スター` everywhere via `itemLabel()` and explicit `displayId = itemId === 'babel' ? 'star' : itemId` guards.
 
 ---
 
@@ -194,7 +235,7 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 - **UI strings**: Japanese only — do not change to English
 - **Section headers**: `// ========== Section Name ==========`
-- **No external libraries**: dependency-free (Firebase SDK exception for online multiplayer)
+- **No external libraries**: dependency-free (Firebase SDK v8 CDN exception)
 - **State mutations**: mutate `gameState` directly, then call `render*()` functions
 - **DOM updates**: regenerate `innerHTML`; avoid partial mutations
 - **User-facing errors**: `showModal('info', message)`
@@ -202,16 +243,15 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 ---
 
-## Firebase / Online Multiplayer (Incomplete)
+## Firebase / Online Multiplayer
 
-Stubbed — SDK not loaded. `initializeFirebase()` only logs to console.
+Firebase SDK v8 is loaded via CDN (lines 796–798). Room creation and game sync are implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
 
-TODOs (marked `// TODO` in code):
-- Load Firebase SDK via CDN `<script>` tag
-- Call `firebase.initializeApp()` inside `initializeFirebase()`
-- Implement Realtime Database reads/writes in `createOnlineRoom()`, `joinOnlineRoom()`, `updateWaitingPlayers()`, `startOnlineGame()`
+Remaining TODOs (marked `// TODO` in code):
+- `updateWaitingPlayers()` — real-time player list in waiting room
+- `startOnlineGame()` — host-triggered game start
 
-Do **not** remove the stub functions — they define the expected API surface.
+Do **not** remove stub functions — they define the expected API surface.
 
 ---
 

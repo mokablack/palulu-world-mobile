@@ -15,7 +15,8 @@
       "mcp__serena__search_for_pattern",
       "mcp__playwright__browser_snapshot",
       "mcp__playwright__browser_wait_for",
-      "mcp__serena__list_memories"
+      "mcp__serena__list_memories",
+      "Bash(cd \"C:/Users/mirai/Documents/my_app/palulu-world-mobile\" && codex exec --full-auto --sandbox read-only --skip-git-repo-check \"index.htmlの構造を分析して、改善点を提案してください 確認や質問は不要です。具体的な提案まで自主的に出力してください\" 2>&1)"
     ]
   }
 }
