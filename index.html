@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ぱるるワールドMobile</title>
     <style>
         * {
@@ -339,6 +339,9 @@
             cursor: pointer;
             transition: all 0.3s;
             margin: 10px auto;
+            font-family: inherit;
+            appearance: none;
+            -webkit-appearance: none;
         }
         
         .dice:active {
@@ -772,7 +775,7 @@
                 </div>
 
                 <div class="dice-container">
-                    <div class="dice" id="dice" onclick="rollDice()">1</div>
+                    <button class="dice" id="dice" onclick="rollDice()" aria-label="サイコロを振る">1</button>
                     <div>タップしてサイコロを振る</div>
                 </div>
 
@@ -788,7 +791,7 @@
     </div>
     
     <!-- モーダル -->
-    <div class="modal" id="modal">
+    <div class="modal" id="modal" role="dialog" aria-modal="true">
         <div class="modal-content" id="modalContent"></div>
     </div>
 
@@ -831,6 +834,14 @@
             const item = ITEMS.find(i => i.id === displayId);
             if (!item) return itemId;
             return `${item.icon} ${item.name}`;
+        }
+
+        function escapeHtml(str) {
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;');
         }
 
         const EVENTS = [
@@ -896,6 +907,11 @@
             renderEventList();
             renderBoard();
             updatePlayerInputs();
+            document.addEventListener('keydown', e => {
+                if (e.key === 'Escape' && document.getElementById('modal').classList.contains('show')) {
+                    handleModalOk();
+                }
+            });
         }
         
         // ========== Firebase設定 ==========
@@ -1306,6 +1322,12 @@
         }
         
         // ========== モード切り替え ==========
+        const ALL_MODES = [
+            'editorMode', 'itemsMode', 'eventsMode',
+            'playModeSelect', 'localMultiSetup', 'onlineMultiSelect',
+            'roomWaiting', 'joinRoom', 'playScreen'
+        ];
+
         function switchMode(mode) {
             // ルーム参加中の制限
             if (gameState.roomId) {
@@ -1331,15 +1353,7 @@
             document.querySelectorAll('.mode-btn').forEach(btn => btn.classList.remove('active'));
 
             // 全セクションを非表示
-            document.getElementById('editorMode').classList.add('hidden');
-            document.getElementById('itemsMode').classList.add('hidden');
-            document.getElementById('eventsMode').classList.add('hidden');
-            document.getElementById('playModeSelect').classList.add('hidden');
-            document.getElementById('localMultiSetup').classList.add('hidden');
-            document.getElementById('onlineMultiSelect').classList.add('hidden');
-            document.getElementById('roomWaiting').classList.add('hidden');
-            document.getElementById('joinRoom').classList.add('hidden');
-            document.getElementById('playScreen').classList.add('hidden');
+            ALL_MODES.forEach(id => document.getElementById(id)?.classList.add('hidden'));
             
             // 選択されたモードを表示
             if (mode === 'editor') {
@@ -1574,7 +1588,7 @@
                 const div = document.createElement('div');
                 div.className = 'waiting-player';
                 div.innerHTML = `
-                    ${player.name}
+                    ${escapeHtml(player.name)}
                     <span class="connection-status ${player.connected ? 'connected' : 'disconnected'}">
                         ${player.connected ? '接続中' : '切断'}
                     </span>
@@ -2300,7 +2314,7 @@ API Key / Project ID / Database URL を取得して入力
             const content = document.getElementById('modalContent');
             const playersHtml = gameState.players.map((p, i) => {
                 if (i === gameState.currentPlayerIndex) return '';
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="setBabelTarget(${i})">${p.name}</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="setBabelTarget(${i})">${escapeHtml(p.name)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">バベル</div>
@@ -2383,8 +2397,8 @@ API Key / Project ID / Database URL を取得して入力
             const content = document.getElementById('modalContent');
             const playersHtml = gameState.players.map((p, i) => {
                 if (i === gameState.currentPlayerIndex) return '';
-                if (p.items.length === 0) return `<button class="btn btn-secondary" style="margin:4px;width:100%;" disabled>${p.name}（アイテムなし）</button>`;
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="snatcherPickItem(${ownItemIndex}, ${i})">${p.name}</button>`;
+                if (p.items.length === 0) return `<button class="btn btn-secondary" style="margin:4px;width:100%;" disabled>${escapeHtml(p.name)}（アイテムなし）</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="snatcherPickItem(${ownItemIndex}, ${i})">${escapeHtml(p.name)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">スナッチャー</div>
@@ -2405,7 +2419,7 @@ API Key / Project ID / Database URL を取得して入力
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">スナッチャー</div>
-                <div class="modal-text">${targetPlayer.name}のどのアイテムと交換しますか？</div>
+                <div class="modal-text">${escapeHtml(targetPlayer.name)}のどのアイテムと交換しますか？</div>
                 ${itemsHtml}
                 <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); doRollDice()">キャンセル</button>
             `;
@@ -2433,7 +2447,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const btns = targets.map(({ p, i }) =>
-                `<button class="btn btn-secondary" style="margin:4px 0;width:100%;" onclick="useHammerOn(${i})">${p.name}</button>`
+                `<button class="btn btn-secondary" style="margin:4px 0;width:100%;" onclick="useHammerOn(${i})">${escapeHtml(p.name)}</button>`
             ).join('');
             content.innerHTML = `
                 <div class="modal-title">トンカチ</div>
@@ -2489,7 +2503,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const btns = dollHolders.map(({ p, i }) =>
-                `<button class="btn btn-danger" style="margin:4px 0;width:100%;" onclick="destroyDollOf(${i})">${p.name}の人形を破壊</button>`
+                `<button class="btn btn-danger" style="margin:4px 0;width:100%;" onclick="destroyDollOf(${i})">${escapeHtml(p.name)}の人形を破壊</button>`
             ).join('');
             content.innerHTML = `
                 <div class="modal-title">コンボ発動</div>
@@ -2971,7 +2985,7 @@ API Key / Project ID / Database URL を取得して入力
                         <div class="player-list-dot p${i + 1}"></div>
                         <div class="player-list-info">
                             <div class="player-list-name">
-                                ${p.name}
+                                ${escapeHtml(p.name)}
                                 ${isCurrent ? '<span class="player-list-badge" style="background:#667eea;">ターン中</span>' : ''}
                                 ${p.skipTurn ? '<span class="player-list-badge" style="background:#ef4444;">1回休み</span>' : ''}
                             </div>
@@ -3015,7 +3029,7 @@ API Key / Project ID / Database URL を取得して入力
                 const stars = p.items.filter(id => id === 'star').length;
                 const starStr = stars > 0 ? ` ⭐×${stars}` : '';
                 const pos = i === 0 ? 'ゴール！' : `${p.position + 1}マス目`;
-                return `${i + 1}位: ${p.name}（${pos}）${starStr}`;
+                return `${i + 1}位: ${escapeHtml(p.name)}（${pos}）${starStr}`;
             }).join('\n');
         }
 
@@ -3054,21 +3068,21 @@ API Key / Project ID / Database URL を取得して入力
                 ` : '';
                 content.innerHTML = `
                     <div class="modal-title">🎉 ゲーム終了！</div>
-                    <div class="modal-text" style="white-space:pre-line;">${text}</div>
-                    ${babelNote ? `<div class="modal-text" style="white-space:pre-line;">${babelNote}</div>` : ''}
+                    <div class="modal-text" style="white-space:pre-line;">${escapeHtml(text)}</div>
+                    ${babelNote ? `<div class="modal-text" style="white-space:pre-line;">${escapeHtml(babelNote)}</div>` : ''}
                     ${onlineButtons}
                     <button class="btn btn-primary" onclick="closeModal(); switchMode('playMode')">終了</button>
                 `;
             } else if (type === 'vanished') {
                 content.innerHTML = `
                     <div class="modal-title">🌀 消失...</div>
-                    <div class="modal-text">${text}</div>
+                    <div class="modal-text">${escapeHtml(text)}</div>
                     <button class="btn btn-secondary" onclick="closeModal(); switchMode('playMode')">タイトルへ戻る</button>
                 `;
             } else {
                 content.innerHTML = `
                     <div class="modal-title">${type === 'info' ? 'お知らせ' : 'イベント発生！'}</div>
-                    <div class="modal-text">${text}</div>
+                    <div class="modal-text">${escapeHtml(text)}</div>
                     <button class="btn btn-primary" onclick="handleModalOk()">OK</button>
                 `;
                 
