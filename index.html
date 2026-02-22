@@ -822,7 +822,7 @@
             { id: 'snatcher', name: 'スナッチャー', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
             { id: 'nail', name: '釘', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
             { id: 'hammer', name: 'トンカチ', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
-            { id: 'kagemaiha', name: '影舞葉', effect: '1つ下の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
+            { id: 'kagemaiha', name: '影舞葉', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
         ];
         
         const EVENTS = [
@@ -1901,15 +1901,16 @@ API Key / Project ID / Database URL を取得して入力
                 showModal('info', '（1人プレイのため影舞葉の効果は発動しません）', () => doRollDice());
                 return;
             }
+            // 降順ソート: index 0 = 1位（最も進んでいる）
             const ranked = gameState.players
                 .map((p, i) => ({ player: p, index: i }))
                 .sort((a, b) => b.player.position - a.player.position);
             const myRankIdx = ranked.findIndex(r => r.index === gameState.currentPlayerIndex);
-            if (myRankIdx === ranked.length - 1) {
-                showModal('info', `${player.name}はビリのため、影舞葉の効果が発動しなかった...`, () => doRollDice());
+            if (myRankIdx === 0) {
+                showModal('info', `${player.name}はすでに1位のため、影舞葉の効果が発動しなかった...`, () => doRollDice());
                 return;
             }
-            const target = ranked[myRankIdx + 1];
+            const target = ranked[myRankIdx - 1]; // 1つ上の順位
             const destPos = target.player.position;
             const targetName = target.player.name;
             updateStatus();
