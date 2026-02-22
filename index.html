@@ -819,7 +819,9 @@
             { id: 'star', name: 'スター', effect: 'リザルトに記録される（効果なし）' },
             { id: 'curseddoll', name: '呪われた人形', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
             { id: 'babel', name: 'バベル', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
-            { id: 'snatcher', name: 'スナッチャー', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' }
+            { id: 'snatcher', name: 'スナッチャー', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
+            { id: 'nail', name: '釘', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
+            { id: 'hammer', name: 'トンカチ', effect: '同じマスにいる他プレイヤー1人を1回休みにする' }
         ];
         
         const EVENTS = [
@@ -864,7 +866,8 @@
             binocularsActive: false,
             koshindoActive: false,
             sakasamaActive: false,
-            winShown: false
+            winShown: false,
+            nailTraps: {}     // { [tileIndex]: placingPlayerIndex }
         };
         
         // ========== 初期化 ==========
@@ -1100,10 +1103,18 @@
                     });
                 }
                 
+                // 釘トラップ表示
+                if (gameState.nailTraps && gameState.nailTraps[index] !== undefined) {
+                    const nailIcon = document.createElement('span');
+                    nailIcon.style.cssText = 'position:absolute;top:2px;left:2px;font-size:10px;line-height:1;';
+                    nailIcon.textContent = '📌';
+                    div.appendChild(nailIcon);
+                }
+
                 if (gameState.mode === 'editor') {
                     div.onclick = () => handleTileClick(index);
                 }
-                
+
                 board.appendChild(div);
             });
         }
@@ -1366,12 +1377,14 @@
         function startSinglePlay() {
             gameState.playMode = 'single';
             gameState.winShown = false;
+            gameState.nailTraps = {};
             gameState.players = [{
                 name: 'プレイヤー',
                 position: 0,
                 items: [],
                 skipTurn: false,
-                babelTarget: null
+                babelTarget: null,
+                immuneTurns: 0
             }];
             gameState.currentPlayerIndex = 0;
             switchMode('play');
@@ -1382,6 +1395,7 @@
             const count = parseInt(document.getElementById('playerCount').value);
             gameState.playMode = 'local';
             gameState.winShown = false;
+            gameState.nailTraps = {};
             gameState.players = [];
 
             for (let i = 0; i < count; i++) {
@@ -1391,7 +1405,8 @@
                     position: 0,
                     items: [],
                     skipTurn: false,
-                    babelTarget: null
+                    babelTarget: null,
+                    immuneTurns: 0
                 });
             }
 
@@ -1568,8 +1583,9 @@
             roomRef.child('players').once('value').then(snap => {
                 const data = snap.val() || {};
                 const playersForGame = Object.entries(data).map(([id, p]) => ({
-                    id, name: p.name, position: 0, items: [], skipTurn: false, babelTarget: null
+                    id, name: p.name, position: 0, items: [], skipTurn: false, babelTarget: null, immuneTurns: 0
                 }));
+                gameState.nailTraps = {};
 
                 if (playersForGame.length < 2) {
                     showModal('info', '2人以上のプレイヤーが必要です。');
@@ -1754,7 +1770,7 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             // サイコロ前に使えるアイテムがある場合のみ確認を出す
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher'];
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer'];
             const hasPreRollItems = currentPlayer.items.some(id => PRE_ROLL_ITEMS.includes(id));
             if (hasPreRollItems) {
                 promptItemUsage();
@@ -1768,7 +1784,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
 
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher'];
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer'];
             const usableEntries = player.items
                 .map((itemId, index) => ({ itemId, index }))
                 .filter(({ itemId }) => PRE_ROLL_ITEMS.includes(itemId));
@@ -1785,8 +1801,19 @@ API Key / Project ID / Database URL を取得して入力
                 `;
             }).join('');
 
+            const hasNail = player.items.includes('nail');
+            const hasHammer = player.items.includes('hammer');
+            const comboHtml = (hasNail && hasHammer) ? `
+                <div style="border:2px solid #667eea;border-radius:8px;padding:10px;margin:6px 0;text-align:left;background:#f0f0ff;">
+                    <div style="font-weight:bold;margin-bottom:4px;">⚡ 釘＋トンカチ コンボ</div>
+                    <div style="font-size:12px;color:#666;margin-bottom:8px;">釘とトンカチを消費して呪われた人形を破壊＆5ターン免疫を得る</div>
+                    <button class="btn btn-danger" style="font-size:13px;padding:6px 14px;" onclick="useNailHammerCombo()">コンボ発動</button>
+                </div>
+            ` : '';
+
             content.innerHTML = `
                 <div class="modal-title">アイテムを使いますか？</div>
+                ${comboHtml}
                 ${itemsHtml}
                 <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); doRollDice()">使わない</button>
             `;
@@ -1820,18 +1847,37 @@ API Key / Project ID / Database URL を取得して入力
                 case 'timestop': {
                     const affected = [];
                     gameState.players.forEach((p, i) => {
-                        if (i !== gameState.currentPlayerIndex) {
+                        if (i !== gameState.currentPlayerIndex && p.immuneTurns <= 0) {
                             p.skipTurn = true;
                             affected.push(p.name);
                         }
                     });
-                    const affectedText = affected.length > 0 ? affected.join('、') : '対象なし';
+                    const affectedText = affected.length > 0 ? affected.join('、') : '対象なし（全員免疫中）';
                     showModal('info', `「${itemData.name}」を使った！\n${affectedText}が1ターン休みになった！`, () => doRollDice());
                     break;
                 }
                 case 'snatcher':
                     promptSnatcherOwnItem();
                     break;
+                case 'babel':
+                    promptBabelTarget(() => doRollDice());
+                    break;
+                case 'hammer': {
+                    const samePos = gameState.players.filter((p, i) =>
+                        i !== gameState.currentPlayerIndex && p.position === player.position
+                    );
+                    if (samePos.length === 0) {
+                        showModal('info', '同じマスにいるプレイヤーがいません！', () => doRollDice());
+                        break;
+                    }
+                    if (samePos.length === 1) {
+                        samePos[0].skipTurn = true;
+                        showModal('info', `「${itemData.name}」を使った！\n${samePos[0].name}が1回休みになった！`, () => doRollDice());
+                        break;
+                    }
+                    promptHammerTarget();
+                    break;
+                }
                 default:
                     doRollDice();
             }
@@ -1899,13 +1945,11 @@ API Key / Project ID / Database URL を取得して入力
         
         function movePlayer(steps) {
             const player = gameState.players[gameState.currentPlayerIndex];
-            let newPosition = player.position + steps;
-            
-            if (newPosition >= gameState.board.length - 1) {
-                newPosition = gameState.board.length - 1;
-                player.position = newPosition;
-                renderBoard();
-                
+            const maxPos = gameState.board.length - 1;
+            let stepsLeft = steps;
+            let currentPos = player.position;
+
+            function handleWinPos() {
                 setTimeout(() => {
                     const winnerIdx = gameState.currentPlayerIndex;
                     let announced = player;
@@ -1934,18 +1978,44 @@ API Key / Project ID / Database URL を取得して入力
                         showModal('win', buildResultText(announced.name), babelNote);
                     }
                 }, 500);
-                return;
             }
-            
-            player.position = newPosition;
-            renderBoard();
-            updateStatus();
 
-            setTimeout(() => {
-                if (!checkBlackholeAdjacency(newPosition) && !checkWhiteholeAdjacency(newPosition)) {
-                    promptKoshindoOrEffect(newPosition);
+            function animateNextStep() {
+                currentPos = Math.min(currentPos + 1, maxPos);
+                stepsLeft--;
+                player.position = currentPos;
+                renderBoard();
+                updateStatus();
+
+                if (currentPos >= maxPos) {
+                    handleWinPos();
+                    return;
                 }
-            }, 600);
+
+                if (stepsLeft > 0) {
+                    // 通過マス: 他プレイヤーが設置した釘のチェック
+                    const nailOwner = gameState.nailTraps && gameState.nailTraps[currentPos];
+                    if (nailOwner !== undefined && nailOwner !== gameState.currentPlayerIndex) {
+                        delete gameState.nailTraps[currentPos];
+                        renderBoard();
+                        const trapperName = gameState.players[nailOwner]?.name || '誰か';
+                        showModal('info', `${trapperName}が設置した釘にひっかかった！\nここで強制停止！`, () => {
+                            promptKoshindoOrEffect(currentPos);
+                        });
+                        return;
+                    }
+                    setTimeout(animateNextStep, 250);
+                } else {
+                    // 最終マスへの着地
+                    setTimeout(() => {
+                        if (!checkBlackholeAdjacency(currentPos) && !checkWhiteholeAdjacency(currentPos)) {
+                            promptKoshindoOrEffect(currentPos);
+                        }
+                    }, 300);
+                }
+            }
+
+            animateNextStep();
         }
 
         function checkBlackholeAdjacency(position) {
@@ -2074,9 +2144,9 @@ API Key / Project ID / Database URL を取得して入力
         // ========== アイテム取得共通処理 ==========
         function onItemAcquired(itemData, afterCallback) {
             if (itemData.id === 'babel') {
-                showModal('info', `「バベル」を手に入れた！`, () => {
+                showModal('info', `スター...いや、これはバベルだ！バベルを手に入れた！（スターと表示される）`, () => {
                     updateStatus();
-                    promptBabelTarget(afterCallback);
+                    if (afterCallback) afterCallback();
                 });
             } else {
                 showModal('info', `「${itemData.name}」を手に入れた！`, () => {
@@ -2317,25 +2387,155 @@ API Key / Project ID / Database URL を取得して入力
             showModal('info', `スナッチャー発動！\n「${ownName}」と「${tgtName}」を交換した！`, () => doRollDice());
         }
 
+        // ========== トンカチ ==========
+        function promptHammerTarget() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const targets = gameState.players
+                .map((p, i) => ({ p, i }))
+                .filter(({ p, i }) => i !== gameState.currentPlayerIndex && p.position === player.position);
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const btns = targets.map(({ p, i }) =>
+                `<button class="btn btn-secondary" style="margin:4px 0;width:100%;" onclick="useHammerOn(${i})">${p.name}</button>`
+            ).join('');
+            content.innerHTML = `
+                <div class="modal-title">トンカチ</div>
+                <div class="modal-text">誰を1回休みにしますか？</div>
+                ${btns}
+            `;
+            modal.classList.add('show');
+        }
+
+        function useHammerOn(targetIndex) {
+            const target = gameState.players[targetIndex];
+            target.skipTurn = true;
+            closeModal();
+            updateStatus();
+            showModal('info', `「トンカチ」を使った！\n${target.name}が1回休みになった！`, () => doRollDice());
+        }
+
+        // ========== 釘＋トンカチ コンボ ==========
+        function useNailHammerCombo() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            // 釘とトンカチを消費
+            let nailIdx = player.items.indexOf('nail');
+            if (nailIdx !== -1) player.items.splice(nailIdx, 1);
+            let hammerIdx = player.items.indexOf('hammer');
+            if (hammerIdx !== -1) player.items.splice(hammerIdx, 1);
+            closeModal();
+
+            // 呪われた人形を持つ他プレイヤーを探す
+            const dollHolders = gameState.players
+                .map((p, i) => ({ p, i }))
+                .filter(({ p, i }) => i !== gameState.currentPlayerIndex && p.items.includes('curseddoll'));
+
+            if (dollHolders.length === 0) {
+                player.immuneTurns = 5;
+                updateStatus();
+                showModal('info', `コンボ発動！\n呪われた人形は見つからなかったが、\n${player.name}は5ターン間、不利な効果を無効化する！`, () => doRollDice());
+                return;
+            }
+            if (dollHolders.length === 1) {
+                const target = dollHolders[0].p;
+                const dollIdx = target.items.indexOf('curseddoll');
+                target.items.splice(dollIdx, 1);
+                player.immuneTurns = 5;
+                updateStatus();
+                showModal('info', `コンボ発動！\n${target.name}の呪われた人形を破壊！\n${player.name}は5ターン間、不利な効果を無効化する！`, () => doRollDice());
+                return;
+            }
+            // 複数いる場合は選択
+            promptDollDestroyTarget(dollHolders, player);
+        }
+
+        function promptDollDestroyTarget(dollHolders, player) {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const btns = dollHolders.map(({ p, i }) =>
+                `<button class="btn btn-danger" style="margin:4px 0;width:100%;" onclick="destroyDollOf(${i})">${p.name}の人形を破壊</button>`
+            ).join('');
+            content.innerHTML = `
+                <div class="modal-title">コンボ発動</div>
+                <div class="modal-text">誰の呪われた人形を破壊しますか？</div>
+                ${btns}
+            `;
+            modal.classList.add('show');
+        }
+
+        function destroyDollOf(targetIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const target = gameState.players[targetIndex];
+            const dollIdx = target.items.indexOf('curseddoll');
+            if (dollIdx !== -1) target.items.splice(dollIdx, 1);
+            player.immuneTurns = 5;
+            updateStatus();
+            closeModal();
+            showModal('info', `コンボ発動！\n${target.name}の呪われた人形を破壊！\n${player.name}は5ターン間、不利な効果を無効化する！`, () => doRollDice());
+        }
+
+        // ========== 釘の設置 ==========
+        function promptNailPlacement(nailIdx, pos, callback) {
+            window.nailCallback = callback;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const tileName = gameState.board[pos]?.name || 'このマス';
+            content.innerHTML = `
+                <div class="modal-title">釘の設置</div>
+                <div class="modal-text">「${tileName}」に釘を設置しますか？<br>他プレイヤーが通過時に強制停止します。</div>
+                <button class="btn btn-primary" onclick="confirmNailPlacement(${nailIdx}, ${pos})">設置する</button>
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal(); window.nailCallback()">設置しない</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function confirmNailPlacement(nailIdx, pos) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(nailIdx, 1);
+            if (!gameState.nailTraps) gameState.nailTraps = {};
+            gameState.nailTraps[pos] = gameState.currentPlayerIndex;
+            updateStatus();
+            renderBoard();
+            closeModal();
+            window.nailCallback();
+        }
+
         function executeTileEffect(tile) {
             if (!tile.effect) {
                 nextTurn();
                 return;
             }
 
-            // 呪われた人形チェック（他プレイヤーが持っていれば30%で肩代わり）
-            const dollHolderIndex = gameState.players.findIndex((p, i) =>
-                i !== gameState.currentPlayerIndex && p.items.includes('curseddoll')
-            );
-            if (dollHolderIndex !== -1 && Math.random() < 0.30) {
-                const dollHolder = gameState.players[dollHolderIndex];
-                showModal('info', `呪われた人形が反応した！\n${dollHolder.name}が代わりに効果を受ける！`, () => {
-                    applyEffectToDollHolder(dollHolderIndex, tile);
-                });
-                return;
+            const player = gameState.players[gameState.currentPlayerIndex];
+
+            // 免疫チェック: 不利なマス効果を無効化
+            if (player && player.immuneTurns > 0) {
+                const isNegative =
+                    (tile.effect.type === 'move' && tile.effect.value < 0) ||
+                    (tile.effect.type === 'event' && (
+                        tile.effect.eventId === 'pit' ||
+                        tile.effect.eventId === 'wind' ||
+                        tile.effect.eventId === 'storm' ||
+                        tile.effect.eventId === 'blackhole'
+                    ));
+                if (isNegative) {
+                    showModal('info', `免疫効果で「${tile.name}」の効果が無効化された！`, () => nextTurn());
+                    return;
+                }
             }
 
-            const player = gameState.players[gameState.currentPlayerIndex];
+            // 呪われた人形チェック（免疫なし & 他プレイヤーが持っていれば30%で肩代わり）
+            if (!player || player.immuneTurns <= 0) {
+                const dollHolderIndex = gameState.players.findIndex((p, i) =>
+                    i !== gameState.currentPlayerIndex && p.items.includes('curseddoll')
+                );
+                if (dollHolderIndex !== -1 && Math.random() < 0.30) {
+                    const dollHolder = gameState.players[dollHolderIndex];
+                    showModal('info', `呪われた人形が反応した！\n${dollHolder.name}が代わりに効果を受ける！`, () => {
+                        applyEffectToDollHolder(dollHolderIndex, tile);
+                    });
+                    return;
+                }
+            }
             
             switch (tile.effect.type) {
                 case 'move':
@@ -2438,6 +2638,27 @@ API Key / Project ID / Database URL を取得して入力
         function nextTurn() {
             if (gameState.playMode === 'single') return;
 
+            // 免疫ターンのデクリメント（今終わったターンのプレイヤー）
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            if (currentPlayer && currentPlayer.immuneTurns > 0) {
+                currentPlayer.immuneTurns--;
+            }
+
+            // 釘の設置確認
+            const nailIdx = currentPlayer ? currentPlayer.items.indexOf('nail') : -1;
+            const pos = currentPlayer ? currentPlayer.position : -1;
+            const tile = pos >= 0 ? gameState.board[pos] : null;
+            const canPlace = nailIdx !== -1
+                && tile && tile.id !== 'start' && tile.id !== 'goal'
+                && !(gameState.nailTraps && gameState.nailTraps[pos] !== undefined);
+            if (canPlace) {
+                promptNailPlacement(nailIdx, pos, doNextTurn);
+                return;
+            }
+            doNextTurn();
+        }
+
+        function doNextTurn() {
             gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
             updateStatus();
 
@@ -2584,7 +2805,7 @@ API Key / Project ID / Database URL を取得して入力
             
             if (type === 'win') {
                 const babelNote = typeof callback === 'string' ? callback : '';
-                const onlineButtons = gameState.playMode === 'online' ? `
+                const onlineButtons = (gameState.playMode === 'online' && gameState.isHost) ? `
                     <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="closeModal(); restartOnlineGame()">再プレイ</button>
                     <button class="btn btn-secondary" style="margin-bottom:8px;" onclick="closeModal(); switchMode('editor')">ステージ編集</button>
                 ` : '';
