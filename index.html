@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ぱるるワールドMobile</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
     <style>
         * {
             margin: 0;
@@ -158,6 +159,25 @@
             text-align: center;
             font-size: 10px;
             line-height: 1.2;
+        }
+
+        .tile-blackhole { background: #1a0a2e !important; }
+        .tile-whitehole { background: #fffde7 !important; }
+
+        .tile-icon {
+            font-size: 15px;
+            line-height: 1;
+            display: block;
+        }
+
+        .tile-icon-blackhole {
+            color: #c084fc;
+            filter: drop-shadow(0 0 3px #9333ea);
+        }
+
+        .tile-icon-whitehole {
+            color: #f59e0b;
+            filter: drop-shadow(0 0 3px #fde68a);
         }
         
         .player-marker {
@@ -1143,6 +1163,14 @@
                     label = tile.effect.value > 0 ? `+${tile.effect.value}` : `${tile.effect.value}`;
                 } else if (tile.effect?.type === 'rest' && tile.effect.value) {
                     label = `休み×${tile.effect.value}`;
+                } else if (tile.effect?.type === 'item') {
+                    label = '<i class="fa-solid fa-gift tile-icon"></i>';
+                } else if (tile.effect?.eventId === 'blackhole') {
+                    div.classList.add('tile-blackhole');
+                    label = '<i class="fa-solid fa-circle-notch fa-spin tile-icon tile-icon-blackhole"></i>';
+                } else if (tile.effect?.eventId === 'whitehole') {
+                    div.classList.add('tile-whitehole');
+                    label = '<i class="fa-solid fa-sun fa-spin tile-icon tile-icon-whitehole"></i>';
                 } else if (tile.effect?.eventTitle) {
                     label = tile.effect.eventTitle;
                 }

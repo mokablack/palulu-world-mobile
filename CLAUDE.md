@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Board Editor** — design custom boards with a tile palette
 - **Single-player** — solo play
-- **Local Multiplayer** — 2–4 players on the same device
+- **Local Multiplayer** — 2–12 players on the same device
 - **Online Multiplayer** — Firebase-backed room system (partially implemented)
 
 No build tooling. Open `index.html` directly in any browser.
@@ -19,15 +19,16 @@ No build tooling. Open `index.html` directly in any browser.
 
 ## Architecture
 
-**Single-file application** — all HTML, CSS, and JavaScript live in `index.html` (~3112 lines). No npm, no build step.
+**Single-file application** — all HTML, CSS, and JavaScript live in `index.html` (~3294 lines). No npm, no build step.
 
 ### `index.html` Layout
 
 | Lines (approx.) | Content |
 |---|---|
-| 1–612 | HTML structure + inline `<style>` block |
-| 796–798 | Firebase SDK `<script>` tags (v8 CDN) |
-| 804–3112 | `<script>` block with all game logic |
+| 1–7 | `<head>` — charset, viewport, title, Font Awesome 6 CDN link |
+| 8–630 | Inline `<style>` block |
+| 800–802 | Firebase SDK `<script>` tags (v8 CDN) |
+| 808–3294 | `<script>` block with all game logic |
 
 ### Script Section Order (delimited by `// ========== ... ==========`)
 
@@ -121,8 +122,8 @@ let gameState = {
     name: string,
     position: number,       // Index into gameState.board
     items: string[],        // Collected item IDs
-    skipTurn: boolean,
-    immuneTurns: number,    // Turns remaining with negative-effect immunity
+    skipTurns: number,      // Turns remaining to skip (0 = no skip)
+    immuneTurns: number,    // Turns remaining with negative-effect immunity (max 3)
     babelTarget: number | null  // Player index for バベル item effect
 }
 ```
@@ -130,7 +131,7 @@ let gameState = {
 ### Constants
 
 ```javascript
-const TILE_TYPES = { NORMAL, FORWARD, BACKWARD, ITEM, EVENT, START, GOAL };
+const TILE_TYPES = { NORMAL, FORWARD, BACKWARD, ITEM, EVENT, REST, START, GOAL };
 
 // Items (13 total) — each has id, name, icon (emoji), effect (string)
 const ITEMS = [
@@ -141,7 +142,7 @@ const ITEMS = [
     { id: 'koshindo',   name: 'コシンドスプレー', icon: '💨', ... },
     { id: 'sakasama',   name: '逆さまスプレー',   icon: '🔄', ... },
     { id: 'star',       name: 'スター',           icon: '⭐', ... },
-    { id: 'curseddoll', name: '呪われた人形',     icon: '🎎', ... },
+    { id: 'curseddoll', name: '呪われた人形',     icon: '🧸', ... },
     { id: 'babel',      name: 'バベル',           icon: '🌀', ... },  // displayed as star externally
     { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', ... },
     { id: 'nail',       name: '釘',               icon: '📌', ... },
@@ -180,14 +181,14 @@ const EVENTS = [
 | `itemLabel(itemId)` | Returns `"icon name"` string for display; resolves `babel`→`star` |
 | `switchMode(mode)` | Navigate between editor / items / events / play screens via `ALL_MODES` table |
 | `initializeBoard()` | Reset board to default |
-| `renderBoard()` | Re-render board grid from `gameState.board` |
+| `renderBoard()` | Re-render board grid from `gameState.board`; shows FA icons for item/blackhole/whitehole tiles |
 | `saveStage()` / `loadStage()` | Persist/restore board to localStorage |
 | `startSinglePlay()` / `startLocalMulti()` | Transition to active gameplay |
 | `rollDice()` | Animate dice and compute movement |
 | `movePlayer(steps)` | Advance current player with step-by-step animation |
 | `executeTileEffect(tile)` | Evaluate effect on landing; checks immunity + curseddoll first |
 | `handleEvent(eventEffect)` | Dispatch event effects including all new event types |
-| `showMerchantDialog()` | 3択アイテム選択UI for 怪しい商人 event |
+| `showMerchantDialog()` | 3択アイテム選択UI for 怪しい商人 event; each offer has 25% chance of being fake (消滅) |
 | `useKagemaiha()` | Move to 1-rank-above player's tile, apply tile effect without dice |
 | `nextTurn()` | Advance turn; handles skip, nailPlacement prompt |
 | `showModal(type, message, callback?)` | `type`: `'info'` \| `'win'` \| `'vanished'` |
@@ -212,7 +213,7 @@ Post-roll items (`koshindo`, `sakasama`) are triggered after landing.
 
 | Key | Value |
 |---|---|
-| `stageData` | JSON — saved board layout + grid size |
+| `stageData_1` / `stageData_2` / `stageData_3` | JSON — 3 save slots, each stores `{ gridSize, board }` |
 | `enabledItems` | JSON — `{ [itemId]: boolean }` |
 | `firebaseConfig` | JSON — `{ apiKey, databaseURL }` |
 
@@ -240,7 +241,7 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 - **UI strings**: Japanese only — do not change to English
 - **Section headers**: `// ========== Section Name ==========`
-- **No external libraries**: dependency-free (Firebase SDK v8 CDN exception)
+- **External CDN libraries**: Firebase SDK v8 CDN + Font Awesome 6.5.2 CDN — no other external dependencies
 - **State mutations**: mutate `gameState` directly, then call `render*()` functions
 - **DOM updates**: regenerate `innerHTML`; avoid partial mutations
 - **XSS safety**: always wrap user-supplied strings in `escapeHtml()` before injecting into `innerHTML`
