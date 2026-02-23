@@ -1,6 +1,7 @@
 #開発要項
 text/
 .playwright-mcp/
+.cocoindex_code/
 
 # エディタ関連
 .vscode/

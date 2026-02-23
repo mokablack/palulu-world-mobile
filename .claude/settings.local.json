@@ -19,7 +19,9 @@
       "Bash(cd \"C:/Users/mirai/Documents/my_app/palulu-world-mobile\" && codex exec --full-auto --sandbox read-only --skip-git-repo-check \"index.htmlの構造を分析して、改善点を提案してください 確認や質問は不要です。具体的な提案まで自主的に出力してください\" 2>&1)",
       "mcp__serena__find_file",
       "mcp__playwright__browser_press_key",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(head:*)",
+      "Bash(codex exec:*)"
     ]
   }
 }

@@ -144,6 +144,7 @@
         .tile-event { background: #60a5fa; color: white; }
         .tile-start { background: #10b981; color: white; }
         .tile-goal { background: #ef4444; color: white; }
+        .tile-rest { background: #a78bfa; color: white; }
         
         .tile-number {
             position: absolute;
@@ -809,7 +810,8 @@
             ITEM: { id: 'item', name: 'アイテム', color: 'tile-item', effect: { type: 'item' } },
             EVENT: { id: 'event', name: 'イベント', color: 'tile-event', effect: { type: 'event' } },
             START: { id: 'start', name: 'スタート', color: 'tile-start', effect: null },
-            GOAL: { id: 'goal', name: 'ゴール', color: 'tile-goal', effect: null }
+            GOAL: { id: 'goal', name: 'ゴール', color: 'tile-goal', effect: null },
+            REST: { id: 'rest', name: '休み', color: 'tile-rest', effect: { type: 'rest', value: 1 } }
         };
         
         const ITEMS = [
@@ -820,7 +822,7 @@
             { id: 'koshindo',   name: 'コシンドスプレー', icon: '💨', effect: '止まったマスの効果を1度だけ無効化（着地後使用）' },
             { id: 'sakasama',   name: '逆さまスプレー',   icon: '🔄', effect: 'サイコロの目だけ逆方向に移動（サイコロ後使用）' },
             { id: 'star',       name: 'スター',           icon: '⭐', effect: 'リザルトに記録される（効果なし）' },
-            { id: 'curseddoll', name: '呪われた人形',     icon: '🎎', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
+            { id: 'curseddoll', name: '呪われた人形',     icon: '🧸', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
             { id: 'babel',      name: 'バベル',           icon: '🌀', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
             { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
             { id: 'nail',       name: '釘',               icon: '📌', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
@@ -1115,6 +1117,8 @@
                 let label = tile.name;
                 if (tile.effect?.type === 'move' && tile.effect.value) {
                     label = tile.effect.value > 0 ? `+${tile.effect.value}` : `${tile.effect.value}`;
+                } else if (tile.effect?.type === 'rest' && tile.effect.value) {
+                    label = `休み×${tile.effect.value}`;
                 } else if (tile.effect?.eventTitle) {
                     label = tile.effect.eventTitle;
                 }
@@ -1158,6 +1162,8 @@
             
             if (selectedType.id === 'forward' || selectedType.id === 'backward') {
                 showMoveValueDialog(index, selectedType);
+            } else if (selectedType.id === 'rest') {
+                showRestValueDialog(index);
             } else if (selectedType.id === 'event') {
                 gameState.editingTileIndex = index;
                 switchMode('events');
@@ -1186,7 +1192,23 @@
             };
             renderBoard();
         }
-        
+
+        function showRestValueDialog(index) {
+            const value = prompt('休む回数を入力してください (1-5):', '1');
+            if (value === null) return;
+            const num = parseInt(value);
+            if (isNaN(num) || num < 1 || num > 5) {
+                alert('1から5の数値を入力してください');
+                return;
+            }
+            gameState.board[index] = {
+                ...TILE_TYPES.REST,
+                name: `休み×${num}`,
+                effect: { type: 'rest', value: num }
+            };
+            renderBoard();
+        }
+
         // ========== パレット ==========
         function renderPalette() {
             const palette = document.getElementById('palette');
@@ -1383,6 +1405,14 @@
             // ゲームを終了ボタンはプレイ中のみ表示
             document.getElementById('exitGameBtn').classList.toggle('hidden', mode !== 'play');
 
+            // プレイ以外のモードではプレイ用UI要素を非表示（バナー残留バグ修正）
+            if (mode !== 'play') {
+                const banner = document.getElementById('currentPlayerBanner');
+                if (banner) banner.classList.add('hidden');
+                const panel = document.getElementById('playerListPanel');
+                if (panel) panel.classList.add('hidden');
+            }
+
             renderBoard();
         }
         
@@ -1412,7 +1442,7 @@
                 name: 'プレイヤー',
                 position: 0,
                 items: [],
-                skipTurn: false,
+                skipTurns: 0,
                 babelTarget: null,
                 immuneTurns: 0
             }];
@@ -1434,7 +1464,7 @@
                     name,
                     position: 0,
                     items: [],
-                    skipTurn: false,
+                    skipTurns: 0,
                     babelTarget: null,
                     immuneTurns: 0
                 });
@@ -1613,7 +1643,7 @@
             roomRef.child('players').once('value').then(snap => {
                 const data = snap.val() || {};
                 const playersForGame = Object.entries(data).map(([id, p]) => ({
-                    id, name: p.name, position: 0, items: [], skipTurn: false, babelTarget: null, immuneTurns: 0
+                    id, name: p.name, position: 0, items: [], skipTurns: 0, babelTarget: null, immuneTurns: 0
                 }));
                 gameState.nailTraps = {};
 
@@ -1792,10 +1822,13 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-            if (currentPlayer.skipTurn) {
-                currentPlayer.skipTurn = false;
+            if (currentPlayer.skipTurns > 0) {
+                currentPlayer.skipTurns--;
+                const skipMsg = currentPlayer.skipTurns > 0
+                    ? `あと${currentPlayer.skipTurns}回休みが残っています`
+                    : '休みが終わりました';
                 nextTurn();
-                showModal('info', '1回休みが解除されました');
+                showModal('info', skipMsg);
                 return;
             }
 
@@ -1836,7 +1869,7 @@ API Key / Project ID / Database URL を取得して入力
             const comboHtml = (hasNail && hasHammer) ? `
                 <div style="border:2px solid #667eea;border-radius:8px;padding:10px;margin:6px 0;text-align:left;background:#f0f0ff;">
                     <div style="font-weight:bold;margin-bottom:4px;">⚡ 釘＋トンカチ コンボ</div>
-                    <div style="font-size:12px;color:#666;margin-bottom:8px;">釘とトンカチを消費して呪われた人形を破壊＆5ターン免疫を得る</div>
+                    <div style="font-size:12px;color:#666;margin-bottom:8px;">釘とトンカチを消費して呪われた人形を破壊＆3ターン免疫を得る</div>
                     <button class="btn btn-danger" style="font-size:13px;padding:6px 14px;" onclick="useNailHammerCombo()">コンボ発動</button>
                 </div>
             ` : '';
@@ -1878,7 +1911,7 @@ API Key / Project ID / Database URL を取得して入力
                     const affected = [];
                     gameState.players.forEach((p, i) => {
                         if (i !== gameState.currentPlayerIndex && p.immuneTurns <= 0) {
-                            p.skipTurn = true;
+                            p.skipTurns = 1;
                             affected.push(p.name);
                         }
                     });
@@ -1901,7 +1934,7 @@ API Key / Project ID / Database URL を取得して入力
                         break;
                     }
                     if (samePos.length === 1) {
-                        samePos[0].skipTurn = true;
+                        samePos[0].skipTurns = 1;
                         showModal('info', `${itemLabel('hammer')} を使った！\n${samePos[0].name}が1回休みになった！`, () => doRollDice());
                         break;
                     }
@@ -2365,7 +2398,7 @@ API Key / Project ID / Database URL を取得して入力
                     break;
                 }
                 default:
-                    holder.skipTurn = true;
+                    holder.skipTurns = 1;
                     showModal('info', `呪いの余波で${holder.name}が1ターン休みになった！`, () => { updateStatus(); nextTurn(); });
             }
         }
@@ -2459,7 +2492,7 @@ API Key / Project ID / Database URL を取得して入力
 
         function useHammerOn(targetIndex) {
             const target = gameState.players[targetIndex];
-            target.skipTurn = true;
+            target.skipTurns = 1;
             closeModal();
             updateStatus();
             showModal('info', `「トンカチ」を使った！\n${target.name}が1回休みになった！`, () => doRollDice());
@@ -2481,18 +2514,18 @@ API Key / Project ID / Database URL を取得して入力
                 .filter(({ p, i }) => i !== gameState.currentPlayerIndex && p.items.includes('curseddoll'));
 
             if (dollHolders.length === 0) {
-                player.immuneTurns = 5;
+                player.immuneTurns = 3;
                 updateStatus();
-                showModal('info', `コンボ発動！\n呪われた人形は見つからなかったが、\n${player.name}は5ターン間、不利な効果を無効化する！`, () => doRollDice());
+                showModal('info', `コンボ発動！\n呪われた人形は見つからなかったが、\n${player.name}は3ターン間、不利な効果を無効化する！`, () => doRollDice());
                 return;
             }
             if (dollHolders.length === 1) {
                 const target = dollHolders[0].p;
                 const dollIdx = target.items.indexOf('curseddoll');
                 target.items.splice(dollIdx, 1);
-                player.immuneTurns = 5;
+                player.immuneTurns = 3;
                 updateStatus();
-                showModal('info', `コンボ発動！\n${target.name}の呪われた人形を破壊！\n${player.name}は5ターン間、不利な効果を無効化する！`, () => doRollDice());
+                showModal('info', `コンボ発動！\n${target.name}の呪われた人形を破壊！\n${player.name}は3ターン間、不利な効果を無効化する！`, () => doRollDice());
                 return;
             }
             // 複数いる場合は選択
@@ -2518,10 +2551,10 @@ API Key / Project ID / Database URL を取得して入力
             const target = gameState.players[targetIndex];
             const dollIdx = target.items.indexOf('curseddoll');
             if (dollIdx !== -1) target.items.splice(dollIdx, 1);
-            player.immuneTurns = 5;
+            player.immuneTurns = 3;
             updateStatus();
             closeModal();
-            showModal('info', `コンボ発動！\n${target.name}の呪われた人形を破壊！\n${player.name}は5ターン間、不利な効果を無効化する！`, () => doRollDice());
+            showModal('info', `コンボ発動！\n${target.name}の呪われた人形を破壊！\n${player.name}は3ターン間、不利な効果を無効化する！`, () => doRollDice());
         }
 
         // ========== 釘の設置 ==========
@@ -2562,6 +2595,7 @@ API Key / Project ID / Database URL を取得して入力
             if (player && player.immuneTurns > 0) {
                 const isNegative =
                     (tile.effect.type === 'move' && tile.effect.value < 0) ||
+                    tile.effect.type === 'rest' ||
                     (tile.effect.type === 'event' && (
                         tile.effect.eventId === 'pit' ||
                         tile.effect.eventId === 'wind' ||
@@ -2589,6 +2623,13 @@ API Key / Project ID / Database URL を取得して入力
             }
             
             switch (tile.effect.type) {
+                case 'rest': {
+                    const turns = tile.effect?.value || 1;
+                    player.skipTurns = (player.skipTurns || 0) + turns;
+                    const msg = turns === 1 ? '休みマス！1回休みます...' : `休みマス！${turns}回休みます...`;
+                    showModal('info', msg, () => nextTurn());
+                    break;
+                }
                 case 'move':
                     const moveValue = tile.effect.value;
                     if (moveValue < 0 && gameState.shieldActive) {
@@ -2704,7 +2745,7 @@ API Key / Project ID / Database URL を取得して入力
                     showModal('info', 'もう一度サイコロを振れます！');
                 };
             } else if (eventEffect.eventEffect === 'skip') {
-                player.skipTurn = true;
+                player.skipTurns = 1;
             } else if (typeof eventEffect.eventEffect === 'number') {
                 callback = () => {
                     let newPos = player.position + eventEffect.eventEffect;
@@ -2927,6 +2968,14 @@ API Key / Project ID / Database URL を取得して入力
                 syncGameStateToFirebase();
                 updateDiceInteractivity();
             }
+
+            // マルチプレイ: ターン開始をダイアログで通知
+            if (gameState.playMode !== 'single') {
+                const nextPlayer = gameState.players[gameState.currentPlayerIndex];
+                if (nextPlayer) {
+                    showModal('info', `${escapeHtml(nextPlayer.name)}のターン！`);
+                }
+            }
         }
         
         function updateStatus() {
@@ -2956,7 +3005,7 @@ API Key / Project ID / Database URL を取得して入力
                         <span>現在位置:</span>
                         <strong>${player.position + 1} / ${gameState.board.length}</strong>
                     </div>
-                    ${player.skipTurn ? '<div class="status-item" style="color: red;"><span>⚠️ 1回休み中</span></div>' : ''}
+                    ${player.skipTurns > 0 ? `<div class="status-item" style="color: red;"><span>⚠️ 休み中（あと${player.skipTurns}回）</span></div>` : ''}
                 `;
 
                 const inventoryContainer = document.getElementById('inventoryContainer');
@@ -2987,7 +3036,7 @@ API Key / Project ID / Database URL を取得して入力
                             <div class="player-list-name">
                                 ${escapeHtml(p.name)}
                                 ${isCurrent ? '<span class="player-list-badge" style="background:#667eea;">ターン中</span>' : ''}
-                                ${p.skipTurn ? '<span class="player-list-badge" style="background:#ef4444;">1回休み</span>' : ''}
+                                ${p.skipTurns > 0 ? `<span class="player-list-badge" style="background:#ef4444;">休み×${p.skipTurns}</span>` : ''}
                             </div>
                             <div class="player-list-pos">${p.position + 1} / ${gameState.board.length} マス目</div>
                             ${p.items.length > 0 ? `<div class="player-list-items">${itemChips}</div>` : ''}
@@ -3039,7 +3088,7 @@ API Key / Project ID / Database URL を取得して入力
                 ...p,
                 position: 0,
                 items: [],
-                skipTurn: false,
+                skipTurns: 0,
                 babelTarget: null
             }));
             gameState.currentPlayerIndex = 0;

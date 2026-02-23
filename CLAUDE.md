@@ -19,7 +19,7 @@ No build tooling. Open `index.html` directly in any browser.
 
 ## Architecture
 
-**Single-file application** — all HTML, CSS, and JavaScript live in `index.html` (~3100 lines). No npm, no build step.
+**Single-file application** — all HTML, CSS, and JavaScript live in `index.html` (~3112 lines). No npm, no build step.
 
 ### `index.html` Layout
 
@@ -27,27 +27,29 @@ No build tooling. Open `index.html` directly in any browser.
 |---|---|
 | 1–612 | HTML structure + inline `<style>` block |
 | 796–798 | Firebase SDK `<script>` tags (v8 CDN) |
-| 800–3097 | `<script>` block with all game logic |
+| 804–3112 | `<script>` block with all game logic |
 
 ### Script Section Order (delimited by `// ========== ... ==========`)
 
-1. Data definitions (`TILE_TYPES`, `ITEMS`, `EVENTS`) + `itemLabel()` helper
-2. Game state (`gameState`)
-3. Initialization (`init()`)
-4. Firebase configuration
-5. Board management + rendering
-6. Palette functions
-7. Item management
-8. Event management
-9. Stage save/load
-10. Mode switching (`switchMode`)
-11. Player setup
-12. Game start logic
-13. Online multiplayer
-14. Game play mechanics — dice, movement, tile effects, item usage
-15. 怪しい商人UI (`showMerchantDialog` and related)
-16. `nextTurn()` + turn flow
-17. Modal utilities
+1. データ定義 — `TILE_TYPES`, `ITEMS`, `EVENTS`, `escapeHtml()`, `itemLabel()`
+2. ゲーム状態 — `gameState`
+3. 初期化 — `init()`
+4. Firebase設定
+5. ボード管理 — `initializeBoard()`, `renderBoard()`
+6. パレット — tile palette UI
+7. アイテム管理
+8. イベント管理
+9. ステージ保存/読み込み — localStorage
+10. モード切り替え — `switchMode()` + `ALL_MODES` table
+11. プレイヤー設定
+12. ゲーム開始 — `startSinglePlay()`, `startLocalMulti()`
+13. オンラインマルチ (Firebase実装)
+14. ゲームプレイ — dice, movement, tile effects
+15. アイテム取得共通処理
+16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 釘 (per-item handlers)
+17. 怪しい商人UI — `showMerchantDialog()` and related (~L2784)
+18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()`
+19. 起動 — `init()` call
 
 ---
 
@@ -174,8 +176,9 @@ const EVENTS = [
 | Function | Purpose |
 |---|---|
 | `init()` | Entry point on page load |
+| `escapeHtml(str)` | XSS-safe HTML escaping — use for all user input embedded in `innerHTML` |
 | `itemLabel(itemId)` | Returns `"icon name"` string for display; resolves `babel`→`star` |
-| `switchMode(mode)` | Navigate between editor / items / events / play screens |
+| `switchMode(mode)` | Navigate between editor / items / events / play screens via `ALL_MODES` table |
 | `initializeBoard()` | Reset board to default |
 | `renderBoard()` | Re-render board grid from `gameState.board` |
 | `saveStage()` / `loadStage()` | Persist/restore board to localStorage |
@@ -196,6 +199,8 @@ const EVENTS = [
 `PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha']`
 
 Post-roll items (`koshindo`, `sakasama`) are triggered after landing.
+
+> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in two separate code paths (around L1803 and L1817). If you add items to this list, update both occurrences.
 
 ### babel display rule
 
@@ -238,6 +243,7 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 - **No external libraries**: dependency-free (Firebase SDK v8 CDN exception)
 - **State mutations**: mutate `gameState` directly, then call `render*()` functions
 - **DOM updates**: regenerate `innerHTML`; avoid partial mutations
+- **XSS safety**: always wrap user-supplied strings in `escapeHtml()` before injecting into `innerHTML`
 - **User-facing errors**: `showModal('info', message)`
 - **Developer feedback**: `console.log` / `console.error`
 
@@ -259,3 +265,13 @@ Do **not** remove stub functions — they define the expected API surface.
 
 - Feature/AI branches: `claude/<description>-<id>`
 - `text/` directory is gitignored — development notes only
+- `.playwright-mcp/` is gitignored — Playwright MCP session logs
+
+---
+
+## Long-term TODOs (from `text/codex review.md`)
+
+Tracked but not yet implemented:
+- **CSS/JS separation** — split into `css/` and `js/` directories; currently all in one file
+- **`onclick` migration** — 66 inline handlers; target: `data-action` + central `addEventListener`
+- **Firebase v8 → v9 Modular** — CDN v8 is legacy; migration deferred
