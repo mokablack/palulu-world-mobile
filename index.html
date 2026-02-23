@@ -170,10 +170,18 @@
             animation: bounce 0.5s;
         }
         
-        .player-marker.p1 { background: #3b82f6; right: 2px; }
-        .player-marker.p2 { background: #ef4444; right: 20px; }
-        .player-marker.p3 { background: #10b981; bottom: 20px; right: 2px; }
-        .player-marker.p4 { background: #fbbf24; bottom: 20px; right: 20px; }
+        .player-marker.p1  { background: #3b82f6; right: 2px; }
+        .player-marker.p2  { background: #ef4444; right: 20px; }
+        .player-marker.p3  { background: #10b981; bottom: 20px; right: 2px; }
+        .player-marker.p4  { background: #fbbf24; bottom: 20px; right: 20px; }
+        .player-marker.p5  { background: #f97316; left: 2px; top: 2px; }
+        .player-marker.p6  { background: #8b5cf6; left: 20px; top: 2px; }
+        .player-marker.p7  { background: #ec4899; left: 2px; top: 18px; }
+        .player-marker.p8  { background: #06b6d4; left: 20px; top: 18px; }
+        .player-marker.p9  { background: #84cc16; right: 38px; top: 2px; }
+        .player-marker.p10 { background: #f59e0b; right: 38px; bottom: 20px; }
+        .player-marker.p11 { background: #6366f1; right: 56px; top: 2px; }
+        .player-marker.p12 { background: #14b8a6; right: 56px; bottom: 20px; }
 
         /* プレイヤー一覧パネル */
         .player-list-panel {
@@ -210,8 +218,16 @@
 
         .player-list-dot.p1 { background: #3b82f6; }
         .player-list-dot.p2 { background: #ef4444; }
-        .player-list-dot.p3 { background: #10b981; }
-        .player-list-dot.p4 { background: #fbbf24; }
+        .player-list-dot.p3  { background: #10b981; }
+        .player-list-dot.p4  { background: #fbbf24; }
+        .player-list-dot.p5  { background: #f97316; }
+        .player-list-dot.p6  { background: #8b5cf6; }
+        .player-list-dot.p7  { background: #ec4899; }
+        .player-list-dot.p8  { background: #06b6d4; }
+        .player-list-dot.p9  { background: #84cc16; }
+        .player-list-dot.p10 { background: #f59e0b; }
+        .player-list-dot.p11 { background: #6366f1; }
+        .player-list-dot.p12 { background: #14b8a6; }
 
         .player-list-info { flex: 1; min-width: 0; }
 
@@ -704,6 +720,14 @@
                         <option value="2">2人</option>
                         <option value="3">3人</option>
                         <option value="4">4人</option>
+                        <option value="5">5人</option>
+                        <option value="6">6人</option>
+                        <option value="7">7人</option>
+                        <option value="8">8人</option>
+                        <option value="9">9人</option>
+                        <option value="10">10人</option>
+                        <option value="11">11人</option>
+                        <option value="12">12人</option>
                     </select>
                     <div id="playerInputs" class="mt-20"></div>
                 </div>
@@ -1317,30 +1341,79 @@
         
         // ========== ステージ保存/読み込み ==========
         function saveStage() {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const slotBtns = [1, 2, 3].map(slot => {
+                const saved = localStorage.getItem(`stageData_${slot}`);
+                let info = '（空）';
+                if (saved) {
+                    try {
+                        const d = JSON.parse(saved);
+                        info = `${d.gridSize.rows}×${d.gridSize.cols}`;
+                    } catch(e) {}
+                }
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="saveStageToSlot(${slot})">スロット ${slot}：${info}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">ステージを保存</div>
+                <div class="modal-text">保存先を選んでください：</div>
+                ${slotBtns}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal()">キャンセル</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function saveStageToSlot(slot) {
             const stageData = {
                 gridSize: gameState.gridSize,
                 board: gameState.board
             };
-            localStorage.setItem('stageData', JSON.stringify(stageData));
-            showModal('info', 'ステージを保存しました！');
+            localStorage.setItem(`stageData_${slot}`, JSON.stringify(stageData));
+            closeModal();
+            showModal('info', `スロット ${slot} に保存しました！`);
         }
-        
+
         function loadStage() {
-            const saved = localStorage.getItem('stageData');
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            let hasAny = false;
+            const slotBtns = [1, 2, 3].map(slot => {
+                const saved = localStorage.getItem(`stageData_${slot}`);
+                if (!saved) {
+                    return `<button class="btn btn-secondary" style="margin:4px;width:100%;" disabled>スロット ${slot}：（空）</button>`;
+                }
+                hasAny = true;
+                let info = '';
+                try {
+                    const d = JSON.parse(saved);
+                    info = `${d.gridSize.rows}×${d.gridSize.cols}`;
+                } catch(e) {}
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" onclick="loadStageFromSlot(${slot})">スロット ${slot}：${info}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">ステージを読み込み</div>
+                <div class="modal-text">${hasAny ? '読み込むスロットを選んでください：' : '保存されたステージがありません'}</div>
+                ${slotBtns}
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" onclick="closeModal()">キャンセル</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function loadStageFromSlot(slot) {
+            const saved = localStorage.getItem(`stageData_${slot}`);
             if (!saved) {
-                alert('保存されたステージがありません');
+                closeModal();
+                showModal('info', `スロット ${slot} にデータがありません`);
                 return;
             }
-            
             const stageData = JSON.parse(saved);
             gameState.gridSize = stageData.gridSize;
             gameState.board = stageData.board;
-            
             document.getElementById('rowsInput').value = gameState.gridSize.rows;
             document.getElementById('colsInput').value = gameState.gridSize.cols;
-            
             renderBoard();
-            showModal('info', 'ステージを読み込みました！');
+            closeModal();
+            showModal('info', `スロット ${slot} を読み込みました！`);
         }
         
         // ========== モード切り替え ==========
@@ -2856,6 +2929,12 @@ API Key / Project ID / Database URL を取得して入力
             const player = gameState.players[gameState.currentPlayerIndex];
             const itemData = ITEMS.find(i => i.id === itemId);
             closeModal();
+            // 25%の確率で偽物
+            if (Math.random() < 0.25) {
+                updateStatus();
+                showModal('info', '手に入れたアイテムは偽物だった！', () => nextTurn());
+                return;
+            }
             player.items.push(itemId);
             onItemAcquired(itemData, () => nextTurn());
         }
@@ -2904,16 +2983,35 @@ API Key / Project ID / Database URL を取得して入力
             const player = gameState.players[gameState.currentPlayerIndex];
             const remaining = window.merchantRemaining || [];
             const picked = window.merchantPicked || [];
-            player.items.push(itemId);
-            updateStatus();
             const newPicked = [...picked, itemId];
             const newRemaining = remaining.filter(i => i.id !== itemId);
             if (newPicked.length < 2 && newRemaining.length > 0) {
+                player.items.push(itemId);
+                updateStatus();
                 merchantPickFromRemaining(newRemaining, newPicked);
             } else {
                 closeModal();
-                const acquiredNames = newPicked.map(id => itemLabel(id)).join('、');
-                showModal('info', `商人との取引完了！\n「${acquiredNames}」を手に入れた！`, () => nextTurn());
+                // 各アイテムに25%の確率で偽物チェック
+                const realItems = [];
+                let anyFake = false;
+                newPicked.forEach(id => {
+                    if (Math.random() < 0.25) {
+                        anyFake = true;
+                    } else {
+                        player.items.push(id);
+                        realItems.push(id);
+                    }
+                });
+                updateStatus();
+                if (anyFake && realItems.length === 0) {
+                    showModal('info', '手に入れたアイテムは偽物だった！', () => nextTurn());
+                } else if (anyFake) {
+                    const realNames = realItems.map(id => itemLabel(id)).join('、');
+                    showModal('info', `手に入れたアイテムは偽物だった！\n（${realNames} は本物）`, () => nextTurn());
+                } else {
+                    const acquiredNames = realItems.map(id => itemLabel(id)).join('、');
+                    showModal('info', `商人との取引完了！\n「${acquiredNames}」を手に入れた！`, () => nextTurn());
+                }
             }
         }
 
@@ -3049,8 +3147,9 @@ API Key / Project ID / Database URL を取得して入力
         
         function exitGame() {
             if (!confirm('ゲームを終了しますか？')) return;
+            const prevMode = gameState.playMode;
             // オンラインモード: リスナー解除 + ホストは参加者に通知
-            if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
+            if (prevMode === 'online' && gameState.firebaseRefs.roomRef) {
                 if (gameState.isHost) {
                     gameState.firebaseRefs.roomRef.child('status').set('abandoned');
                 }
@@ -3063,7 +3162,13 @@ API Key / Project ID / Database URL を取得して入力
             gameState.roomId = null;
             gameState.isHost = false;
             gameState.firebaseRefs = {};
-            switchMode('onlineMultiSelect');
+            if (prevMode === 'single') {
+                switchMode('editor');
+            } else if (prevMode === 'local') {
+                switchMode('localMultiSetup');
+            } else {
+                switchMode('onlineMultiSelect');
+            }
         }
         
         // ========== モーダル ==========
