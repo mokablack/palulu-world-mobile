@@ -182,8 +182,8 @@
             animation: bounce 0.5s;
         }
         
-        .player-marker.p1  { background: #3b82f6; right: 2px; }
-        .player-marker.p2  { background: #ef4444; right: 20px; }
+        .player-marker.p1  { background: #e63737; right: 2px; }
+        .player-marker.p2  { background: #4455ef; right: 20px; }
         .player-marker.p3  { background: #10b981; bottom: 20px; right: 2px; }
         .player-marker.p4  { background: #fbbf24; bottom: 20px; right: 20px; }
         .player-marker.p5  { background: #f97316; left: 2px; top: 2px; }
