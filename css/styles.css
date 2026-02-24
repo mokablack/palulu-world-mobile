@@ -1,0 +1,644 @@
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            touch-action: manipulation;
+            padding: 10px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        
+        .header h1 {
+            color: #667eea;
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        
+        /* Firebase設定セクション */
+        .firebase-config {
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 10px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .firebase-config.configured {
+            background: #d4edda;
+            border-color: #28a745;
+        }
+        
+        .firebase-config h3 {
+            color: #856404;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+        
+        .firebase-config.configured h3 {
+            color: #155724;
+        }
+        
+        .firebase-config input {
+            width: 100%;
+            padding: 8px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .firebase-config button {
+            margin-top: 10px;
+        }
+        
+        /* モード選択 */
+        .mode-selector {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .mode-btn {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .mode-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .mode-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* ボード */
+        .board {
+            display: grid;
+            gap: 8px;
+            margin: 20px 0;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 10px;
+        }
+        
+        .tile {
+            aspect-ratio: 1;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            overflow: hidden;
+            padding: 2px;
+        }
+        
+        .tile:active {
+            transform: scale(0.95);
+        }
+        
+        .tile-normal { background: #fff; color: #333; }
+        .tile-forward { background: #4ade80; color: white; }
+        .tile-backward { background: #f87171; color: white; }
+        .tile-item { background: #fbbf24; color: white; }
+        .tile-event { background: #60a5fa; color: white; }
+        .tile-start { background: #10b981; color: white; }
+        .tile-goal { background: #ef4444; color: white; }
+        .tile-rest { background: #a78bfa; color: white; }
+        
+        .tile-number {
+            position: absolute;
+            top: 2px;
+            left: 4px;
+            font-size: 9px;
+            opacity: 0.7;
+        }
+        
+        .tile-label {
+            text-align: center;
+            font-size: 10px;
+            line-height: 1.2;
+        }
+
+        .tile-blackhole { background: #1a0a2e !important; }
+        .tile-whitehole { background: #fffde7 !important; }
+
+        .tile-icon {
+            font-size: 15px;
+            line-height: 1;
+            display: block;
+        }
+
+        .tile-icon-blackhole {
+            color: #c084fc;
+            filter: drop-shadow(0 0 3px #9333ea);
+        }
+
+        .tile-icon-whitehole {
+            color: #f59e0b;
+            filter: drop-shadow(0 0 3px #fde68a);
+        }
+        
+        .player-marker {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid white;
+            position: absolute;
+            bottom: 2px;
+            animation: bounce 0.5s;
+        }
+        
+        .player-marker.p1  { background: #3b82f6; right: 2px; }
+        .player-marker.p2  { background: #ef4444; right: 20px; }
+        .player-marker.p3  { background: #10b981; bottom: 20px; right: 2px; }
+        .player-marker.p4  { background: #fbbf24; bottom: 20px; right: 20px; }
+        .player-marker.p5  { background: #f97316; left: 2px; top: 2px; }
+        .player-marker.p6  { background: #8b5cf6; left: 20px; top: 2px; }
+        .player-marker.p7  { background: #ec4899; left: 2px; top: 18px; }
+        .player-marker.p8  { background: #06b6d4; left: 20px; top: 18px; }
+        .player-marker.p9  { background: #84cc16; right: 38px; top: 2px; }
+        .player-marker.p10 { background: #f59e0b; right: 38px; bottom: 20px; }
+        .player-marker.p11 { background: #6366f1; right: 56px; top: 2px; }
+        .player-marker.p12 { background: #14b8a6; right: 56px; bottom: 20px; }
+
+        /* プレイヤー一覧パネル */
+        .player-list-panel {
+            background: #f8f9ff;
+            border: 1px solid #dde3ff;
+            border-radius: 12px;
+            padding: 8px;
+            margin: 10px 0;
+        }
+
+        .player-list-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 7px 8px;
+            border-radius: 8px;
+            margin: 3px 0;
+        }
+
+        .player-list-row.current-turn {
+            background: linear-gradient(135deg, rgba(102,126,234,0.13) 0%, rgba(118,75,162,0.1) 100%);
+            outline: 1.5px solid #667eea;
+        }
+
+        .player-list-dot {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            border: 2px solid white;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.28);
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .player-list-dot.p1 { background: #e63737; }
+        .player-list-dot.p2 { background: #4455ef; }
+        .player-list-dot.p3  { background: #10b981; }
+        .player-list-dot.p4  { background: #fbbf24; }
+        .player-list-dot.p5  { background: #f97316; }
+        .player-list-dot.p6  { background: #8b5cf6; }
+        .player-list-dot.p7  { background: #ec4899; }
+        .player-list-dot.p8  { background: #06b6d4; }
+        .player-list-dot.p9  { background: #84cc16; }
+        .player-list-dot.p10 { background: #f59e0b; }
+        .player-list-dot.p11 { background: #6366f1; }
+        .player-list-dot.p12 { background: #14b8a6; }
+
+        .player-list-info { flex: 1; min-width: 0; }
+
+        .player-list-name {
+            font-size: 13px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+
+        .player-list-badge {
+            font-size: 9px;
+            font-weight: normal;
+            padding: 1px 5px;
+            border-radius: 999px;
+            color: white;
+        }
+
+        .player-list-pos {
+            font-size: 11px;
+            color: #888;
+            margin-top: 2px;
+        }
+
+        .player-list-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 3px;
+            margin-top: 4px;
+        }
+
+        .player-list-item-chip {
+            background: #fbbf24;
+            color: #333;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 999px;
+            font-weight: 500;
+        }
+        
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        
+        /* パレット */
+        .tile-palette {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(70px, 1fr));
+            gap: 8px;
+            margin: 15px 0;
+        }
+        
+        .palette-tile {
+            padding: 10px 5px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 11px;
+            cursor: pointer;
+            border: 3px solid transparent;
+            transition: all 0.2s;
+        }
+        
+        .palette-tile.selected {
+            border-color: #667eea;
+            transform: scale(1.05);
+        }
+        
+        /* コントロール */
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        
+        .btn {
+            padding: 15px;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-secondary {
+            background: #e5e7eb;
+            color: #374151;
+        }
+        
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        /* サイコロ */
+        .dice-container {
+            text-align: center;
+            margin: 20px 0;
+        }
+        
+        .dice {
+            width: 80px;
+            height: 80px;
+            background: white;
+            border: 3px solid #667eea;
+            border-radius: 15px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px auto;
+            font-family: inherit;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+        
+        .dice:active {
+            transform: scale(0.95) rotate(20deg);
+        }
+        
+        .dice.rolling {
+            animation: roll 0.5s;
+        }
+        
+        @keyframes roll {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(90deg); }
+            50% { transform: rotate(180deg); }
+            75% { transform: rotate(270deg); }
+        }
+        
+        /* ステータス */
+        .status {
+            background: #f3f4f6;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+        }
+        
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 14px;
+        }
+        
+        .current-player-banner {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+        
+        /* モーダル */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            padding: 20px;
+        }
+        
+        .modal.show {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            border-radius: 20px;
+            padding: 30px;
+            max-width: 400px;
+            width: 100%;
+            text-align: center;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-title {
+            font-size: 24px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            color: #667eea;
+        }
+        
+        .modal-text {
+            font-size: 16px;
+            margin-bottom: 20px;
+            line-height: 1.6;
+            white-space: pre-line;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        /* インベントリ */
+        .inventory {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 10px 0;
+        }
+        
+        .inventory-item {
+            padding: 8px 12px;
+            background: #fbbf24;
+            color: white;
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        /* グリッドサイズ選択 */
+        .grid-size-selector {
+            display: flex;
+            gap: 10px;
+            margin: 15px 0;
+            align-items: center;
+        }
+        
+        .grid-size-selector label {
+            font-weight: bold;
+        }
+        
+        .grid-size-selector input {
+            width: 60px;
+            padding: 8px;
+            border: 2px solid #667eea;
+            border-radius: 5px;
+            font-size: 16px;
+        }
+        
+        /* リスト */
+        .item-list, .event-list {
+            margin: 15px 0;
+        }
+        
+        .list-item {
+            background: #f9fafb;
+            padding: 12px;
+            margin: 8px 0;
+            border-radius: 8px;
+            border: 2px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .list-item input[type="checkbox"],
+        .list-item input[type="radio"] {
+            width: 20px;
+            height: 20px;
+        }
+        
+        .list-item-content {
+            flex: 1;
+        }
+        
+        .list-item-title {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+        
+        .list-item-desc {
+            font-size: 13px;
+            color: #6b7280;
+        }
+        
+        /* プレイヤー設定 */
+        .player-setup {
+            margin: 15px 0;
+        }
+        
+        .player-input {
+            margin: 10px 0;
+        }
+        
+        .player-input label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .player-input input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #667eea;
+            border-radius: 8px;
+            font-size: 16px;
+        }
+        
+        /* ルーム */
+        .room-id-display {
+            background: #f3f4f6;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            margin: 15px 0;
+        }
+        
+        .room-id-display .room-id {
+            font-size: 32px;
+            font-weight: bold;
+            color: #667eea;
+            letter-spacing: 4px;
+            margin: 10px 0;
+        }
+        
+        .players-waiting {
+            margin: 15px 0;
+        }
+        
+        .waiting-player {
+            background: #e0e7ff;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+        
+        .connection-status {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        /* ユーティリティ */
+        .hidden {
+            display: none !important;
+        }
+        
+        .text-center {
+            text-align: center;
+        }
+        
+        .mt-20 {
+            margin-top: 20px;
+        }
+        
+        /* ナビゲーション */
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-btn {
+            flex: 1;
+            padding: 10px;
+            background: #e5e7eb;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .nav-btn:active {
+            background: #d1d5db;
+        }
+    

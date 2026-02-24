@@ -19,18 +19,21 @@ No build tooling. Open `index.html` directly in any browser.
 
 ## Architecture
 
-**Single-file application** — all HTML, CSS, and JavaScript live in `index.html` (~3294 lines). No npm, no build step.
+**No build tooling** — open `index.html` directly in any browser. No npm, no build step.
 
-### `index.html` Layout
+### File Structure
 
-| Lines (approx.) | Content |
-|---|---|
-| 1–7 | `<head>` — charset, viewport, title, Font Awesome 6 CDN link |
-| 8–630 | Inline `<style>` block |
-| 800–802 | Firebase SDK `<script>` tags (v8 CDN) |
-| 808–3294 | `<script>` block with all game logic |
+```
+index.html        (~206 lines) — HTML skeleton only
+css/
+  styles.css      (~644 lines) — all styles
+js/
+  game.js         (~2512 lines) — all game logic
+```
 
-### Script Section Order (delimited by `// ========== ... ==========`)
+`index.html` loads Font Awesome 6 CDN, `css/styles.css`, Firebase SDK v8 CDN (3 scripts), then `js/game.js`.
+
+### `js/game.js` Section Order (delimited by `// ========== ... ==========`)
 
 1. データ定義 — `TILE_TYPES`, `ITEMS`, `EVENTS`, `escapeHtml()`, `itemLabel()`
 2. ゲーム状態 — `gameState`
@@ -50,7 +53,8 @@ No build tooling. Open `index.html` directly in any browser.
 16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 釘 (per-item handlers)
 17. 怪しい商人UI — `showMerchantDialog()` and related (~L2784)
 18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()`
-19. 起動 — `init()` call
+19. イベント委譲ディスパッチャー — `ACTION_HANDLERS` + `document.addEventListener('click', ...)`
+20. 起動 — `init()` call
 
 ---
 
@@ -233,7 +237,7 @@ Post-roll items (`koshindo`, `sakasama`) are triggered after landing.
 - Element IDs: camelCase (`firebaseConfigForm`, `editorMode`)
 - Utility classes: `.hidden`, `.text-center`, `.mt-20`
 
-Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`. Inline `onclick` handlers used throughout.
+Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`. Buttons use `data-action` / `data-arg` / `data-*` attributes; clicks dispatched by central `ACTION_HANDLERS` in `js/game.js`.
 
 ---
 
@@ -252,7 +256,7 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 ## Firebase / Online Multiplayer
 
-Firebase SDK v8 is loaded via CDN (lines 796–798). Room creation and game sync are implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
+Firebase SDK v8 is loaded via CDN in `index.html` (3 `<script>` tags before `js/game.js`). Room creation and game sync are implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
 
 Remaining TODOs (marked `// TODO` in code):
 - `updateWaitingPlayers()` — real-time player list in waiting room
@@ -272,7 +276,6 @@ Do **not** remove stub functions — they define the expected API surface.
 
 ## Long-term TODOs (from `text/codex review.md`)
 
-Tracked but not yet implemented:
-- **CSS/JS separation** — split into `css/` and `js/` directories; currently all in one file
-- **`onclick` migration** — 66 inline handlers; target: `data-action` + central `addEventListener`
-- **Firebase v8 → v9 Modular** — CDN v8 is legacy; migration deferred
+- [x] **CSS/JS separation** — `css/styles.css` + `js/game.js` に分離済み
+- [x] **`onclick` migration** — 70箇所を `data-action` + `ACTION_HANDLERS` に移行済み
+- [ ] **Firebase v8 → v9 Modular** — CDN v8 is legacy; migration deferred

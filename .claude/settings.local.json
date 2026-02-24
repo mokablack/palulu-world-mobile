@@ -21,7 +21,15 @@
       "mcp__playwright__browser_press_key",
       "Bash(pkill:*)",
       "Bash(head:*)",
-      "Bash(codex exec:*)"
+      "Bash(codex exec:*)",
+      "mcp__serena__check_onboarding_performed",
+      "Bash(cd:*)",
+      "Bash(cd /c/Users/mirai/Documents/my_app/palulu-world-mobile && PYTHONIOENCODING=utf-8 python refactor.py 2>&1)",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_handle_dialog",
+      "mcp__playwright__browser_type",
+      "Bash(netstat -ano)",
+      "Bash(xargs -I{} taskkill /PID {} /F)"
     ]
   }
 }
