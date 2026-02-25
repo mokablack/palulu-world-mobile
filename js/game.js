@@ -1502,12 +1502,12 @@ API Key / Project ID / Database URL を取得して入力
                 showModal('info', `スター...いや、これはバベルだ！バベルを手に入れた！（スターと表示される）`, () => {
                     updateStatus();
                     if (afterCallback) afterCallback();
-                });
+                }, 'アイテムゲット！');
             } else {
                 showModal('info', `${itemData.icon} ${itemData.name} を手に入れた！`, () => {
                     updateStatus();
                     if (afterCallback) afterCallback();
-                });
+                }, 'アイテムゲット！');
             }
         }
 
@@ -1974,7 +1974,7 @@ API Key / Project ID / Database URL を取得して入力
                     renderBoard();
                     updateStatus();
                     nextTurn();
-                });
+                }, eventEffect.eventTitle);
                 return;
             }
 
@@ -1986,7 +1986,7 @@ API Key / Project ID / Database URL を取得して入力
                         const ranked = gameState.players.slice().sort((a, b) => b.position - a.position);
                         showModal('win', buildResultText(ranked[0].name), '');
                     }
-                });
+                }, eventEffect.eventTitle);
                 updateStatus();
                 return;
             }
@@ -2081,7 +2081,7 @@ API Key / Project ID / Database URL を取得して入力
                 };
             }
 
-            showModal('info', eventText, callback);
+            showModal('info', eventText, callback, eventEffect.eventTitle);
             updateStatus();
         }
 
@@ -2261,7 +2261,7 @@ API Key / Project ID / Database URL を取得して入力
             if (gameState.playMode !== 'single') {
                 const nextPlayer = gameState.players[gameState.currentPlayerIndex];
                 if (nextPlayer) {
-                    showModal('info', `${escapeHtml(nextPlayer.name)}のターン！`);
+                    showModal('info', '', undefined, `${nextPlayer.name}のターン！`);
                 }
             }
         }
@@ -2473,10 +2473,10 @@ API Key / Project ID / Database URL を取得して入力
             setTimeout(animate, 200);
         }
 
-        function showModal(type, text, callback) {
+        function showModal(type, text, callback, titleOverride) {
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
-            
+
             if (type === 'win') {
                 const babelNote = typeof callback === 'string' ? callback : '';
                 const onlineButtons = (gameState.playMode === 'online' && gameState.isHost) ? `
@@ -2497,9 +2497,10 @@ API Key / Project ID / Database URL を取得して入力
                     <button class="btn btn-secondary" data-action="closeModalThenSwitchPlayMode">タイトルへ戻る</button>
                 `;
             } else {
+                const modalTitle = titleOverride ? escapeHtml(titleOverride) : (type === 'info' ? 'お知らせ' : 'イベント発生！');
                 content.innerHTML = `
-                    <div class="modal-title">${type === 'info' ? 'お知らせ' : 'イベント発生！'}</div>
-                    <div class="modal-text">${escapeHtml(text)}</div>
+                    <div class="modal-title">${modalTitle}</div>
+                    ${text ? `<div class="modal-text">${escapeHtml(text)}</div>` : ''}
                     <button class="btn btn-primary" data-action="handleModalOk">OK</button>
                 `;
                 
