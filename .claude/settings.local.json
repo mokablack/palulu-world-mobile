@@ -29,7 +29,9 @@
       "mcp__playwright__browser_handle_dialog",
       "mcp__playwright__browser_type",
       "Bash(netstat -ano)",
-      "Bash(xargs -I{} taskkill /PID {} /F)"
+      "Bash(xargs -I{} taskkill /PID {} /F)",
+      "mcp__serena__get_symbols_overview",
+      "mcp__serena__find_symbol"
     ]
   }
 }

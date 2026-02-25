@@ -311,7 +311,9 @@
                 div.className = `tile ${tile.color}`;
                 
                 let label = tile.name;
-                if (tile.effect?.type === 'move' && tile.effect.value) {
+                if (tile.id === 'normal') {
+                    label = '';
+                } else if (tile.effect?.type === 'move' && tile.effect.value) {
                     label = tile.effect.value > 0 ? `+${tile.effect.value}` : `${tile.effect.value}`;
                 } else if (tile.effect?.type === 'rest' && tile.effect.value) {
                     label = `休み×${tile.effect.value}`;
@@ -323,6 +325,12 @@
                 } else if (tile.effect?.eventId === 'whitehole') {
                     div.classList.add('tile-whitehole');
                     label = '<i class="fa-solid fa-sun fa-spin tile-icon tile-icon-whitehole"></i>';
+                } else if (tile.effect?.eventId === 'mask') {
+                    div.classList.add('tile-mask');
+                    label = '<i class="fa-solid fa-masks-theater tile-icon tile-icon-mask"></i>';
+                } else if (tile.effect?.eventId === 'average') {
+                    div.classList.add('tile-average');
+                    label = '<i class="fa-solid fa-scale-balanced tile-icon tile-icon-average"></i>';
                 } else if (tile.effect?.eventTitle) {
                     label = tile.effect.eventTitle;
                 }
@@ -2046,12 +2054,14 @@ API Key / Project ID / Database URL を取得して入力
                 };
             } else if (eventEffect.eventEffect === 'average') {
                 callback = () => {
-                    const targetPlayer = gameState.players[Math.floor(Math.random() * gameState.players.length)];
-                    const dest = targetPlayer.position;
-                    gameState.players.forEach(p => { p.position = dest; });
-                    renderBoard();
-                    updateStatus();
-                    showModal('info', `${targetPlayer.name}のマス（${dest + 1}マス目）に全員集合！`, () => nextTurn());
+                    showAverageRoulette((selectedIndex) => {
+                        const targetPlayer = gameState.players[selectedIndex];
+                        const dest = targetPlayer.position;
+                        gameState.players.forEach(p => { p.position = dest; });
+                        renderBoard();
+                        updateStatus();
+                        showModal('info', `${targetPlayer.name}のマス（${dest + 1}マス目）に全員集合！`, () => nextTurn());
+                    });
                 };
             } else if (eventEffect.eventEffect === 'nameback') {
                 callback = () => {
@@ -2388,6 +2398,79 @@ API Key / Project ID / Database URL を取得して入力
                 gameSnapshot: JSON.stringify(nextSnap)
             });
             updateDiceInteractivity();
+        }
+
+        function showAverageRoulette(onComplete) {
+            const players = gameState.players;
+
+            // 順位計算（positionが高い＝上位）
+            const sortedByPos = [...players].sort((a, b) => b.position - a.position);
+            // 重み：順位が低い（下位）ほど高い
+            const weights = players.map(player => {
+                const rank = sortedByPos.indexOf(player) + 1; // 1=1位, N=最下位
+                return players.length - rank + 1;
+            });
+
+            // 加重ランダム選択
+            const totalWeight = weights.reduce((s, w) => s + w, 0);
+            let rand = Math.random() * totalWeight;
+            let selectedIndex = players.length - 1;
+            for (let i = 0; i < weights.length; i++) {
+                rand -= weights[i];
+                if (rand <= 0) { selectedIndex = i; break; }
+            }
+
+            // モーダルにルーレットUIを表示
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">⚖️ 平均の力が働いた！</div>
+                <div class="modal-text" style="margin-bottom:12px;">選ばれし者のマスに全員移動...</div>
+                <div class="roulette-container" id="rouletteItems">
+                    ${players.map((p, i) => `<div class="roulette-item" id="rouletteItem_${i}">${escapeHtml(p.name)}</div>`).join('')}
+                </div>
+                <div id="rouletteResult" style="margin-top:16px;font-size:18px;font-weight:bold;min-height:28px;color:#d97706;"></div>
+            `;
+            modal.classList.add('show');
+
+            // スピンフレームを構築（最終的に selectedIndex で終わる）
+            const frames = [];
+            const minSteps = Math.max(20, 3 * players.length);
+            for (let i = 0; i < minSteps; i++) {
+                frames.push(i % players.length);
+            }
+            // selectedIndex に着地するまで追加
+            let last = frames[frames.length - 1];
+            while (last !== selectedIndex) {
+                last = (last + 1) % players.length;
+                frames.push(last);
+            }
+
+            const highlightItem = (idx) => {
+                for (let i = 0; i < players.length; i++) {
+                    const el = document.getElementById(`rouletteItem_${i}`);
+                    if (el) el.className = 'roulette-item' + (i === idx ? ' roulette-active' : '');
+                }
+            };
+
+            let frameIdx = 0;
+            const animate = () => {
+                if (frameIdx >= frames.length) {
+                    // 着地
+                    const el = document.getElementById(`rouletteItem_${selectedIndex}`);
+                    if (el) el.className = 'roulette-item roulette-winner';
+                    const resultDiv = document.getElementById('rouletteResult');
+                    if (resultDiv) resultDiv.textContent = `${players[selectedIndex].name} に決定！`;
+                    setTimeout(() => onComplete(selectedIndex), 1600);
+                    return;
+                }
+                highlightItem(frames[frameIdx]);
+                const progress = frameIdx / frames.length;
+                const delay = progress < 0.6 ? 80 : 80 + Math.pow((progress - 0.6) / 0.4, 2) * 520;
+                frameIdx++;
+                setTimeout(animate, delay);
+            };
+            setTimeout(animate, 200);
         }
 
         function showModal(type, text, callback) {

@@ -155,6 +155,8 @@
 
         .tile-blackhole { background: #1a0a2e !important; }
         .tile-whitehole { background: #fffde7 !important; }
+        .tile-mask    { background: #7c3aed !important; }
+        .tile-average { background: #d97706 !important; }
 
         .tile-icon {
             font-size: 15px;
@@ -169,6 +171,16 @@
 
         .tile-icon-whitehole {
             color: #f59e0b;
+            filter: drop-shadow(0 0 3px #fde68a);
+        }
+
+        .tile-icon-mask {
+            color: #ede9fe;
+            filter: drop-shadow(0 0 3px #c4b5fd);
+        }
+
+        .tile-icon-average {
+            color: #fef3c7;
             filter: drop-shadow(0 0 3px #fde68a);
         }
         
@@ -628,6 +640,38 @@
             margin-bottom: 20px;
         }
         
+        /* 平均ルーレット */
+        .roulette-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            justify-content: center;
+            padding: 8px;
+        }
+
+        .roulette-item {
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: #e5e7eb;
+            color: #333;
+            font-weight: bold;
+            font-size: 14px;
+            transition: background 0.08s, transform 0.08s;
+        }
+
+        .roulette-item.roulette-active {
+            background: #667eea;
+            color: white;
+            transform: scale(1.1);
+        }
+
+        .roulette-item.roulette-winner {
+            background: #fbbf24;
+            color: white;
+            transform: scale(1.2);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.6);
+        }
+
         .nav-btn {
             flex: 1;
             padding: 10px;
