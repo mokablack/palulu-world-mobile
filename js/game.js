@@ -58,7 +58,8 @@
             { id: 'ganbare', title: 'がんばれ！', text: 'がんばれ！', effect: 'ganbare' },
             { id: 'resetall', title: '仕切り直し', text: '仕切り直し！全員スタートに戻る！', effect: 'resetall' },
             { id: 'newstart', title: 'ここをスタートとする！', text: 'ここからが本当のスタートだ！', effect: 'newstart' },
-            { id: 'angry', title: '怒らせたら10進む', text: 'ランダムなプレイヤーを怒らせることができるか？', effect: 'angry' }
+            { id: 'angry', title: '怒らせたら10進む', text: 'ランダムなプレイヤーを怒らせることができるか？', effect: 'angry' },
+            { id: 'self_appeal', title: '自分をアピールして！', text: '30秒で自己アピールして他プレイヤーの採用を勝ち取れ！', effect: 'self_appeal' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -1952,6 +1953,12 @@ API Key / Project ID / Database URL を取得して入力
                 return;
             }
 
+            // 自分をアピールして！：30秒アピール＋他プレイヤー投票
+            if (eventEffect.eventEffect === 'self_appeal') {
+                showSelfAppealEvent();
+                return;
+            }
+
             // がんばれ！：大きなテキスト表示
             if (eventEffect.eventEffect === 'ganbare') {
                 const modal = document.getElementById('modal');
@@ -2480,6 +2487,109 @@ API Key / Project ID / Database URL を取得して入力
             setTimeout(animate, 200);
         }
 
+        // ========== 自分をアピールして！ ==========
+        function showSelfAppealEvent() {
+            const currentIdx = gameState.currentPlayerIndex;
+            const currentPlayer = gameState.players[currentIdx];
+            const otherIndices = gameState.players
+                .map((_, i) => i)
+                .filter(i => i !== currentIdx);
+
+            if (otherIndices.length === 0) {
+                showModal('info', '他のプレイヤーがいないため、何も起きなかった。', () => nextTurn());
+                return;
+            }
+
+            window.selfAppealCurrentPlayer = currentIdx;
+            window.selfAppealVoters = otherIndices;
+
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            let timeLeft = 30;
+
+            content.innerHTML = `
+                <div class="modal-title">📣 自分をアピールして！</div>
+                <div class="modal-text">
+                    <strong>${escapeHtml(currentPlayer.name)}</strong> さんのアピールタイム！<br>
+                    他のプレイヤーを説得してください！
+                </div>
+                <div style="font-size:36px;font-weight:bold;color:#667eea;margin:12px 0;">
+                    残り <span id="selfAppealTimer">30</span> 秒
+                </div>
+            `;
+            modal.classList.add('show');
+
+            window.selfAppealTimerId = setInterval(() => {
+                timeLeft--;
+                const timerEl = document.getElementById('selfAppealTimer');
+                if (timerEl) timerEl.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(window.selfAppealTimerId);
+                    window.selfAppealTimerId = null;
+                    startSelfAppealVoting(0, []);
+                }
+            }, 1000);
+        }
+
+        function startSelfAppealVoting(voterArrayIndex, votes) {
+            const voterIndices = window.selfAppealVoters;
+
+            if (voterArrayIndex >= voterIndices.length) {
+                finishSelfAppealVoting(votes);
+                return;
+            }
+
+            const voterIdx = voterIndices[voterArrayIndex];
+            const voter = gameState.players[voterIdx];
+            const currentPlayer = gameState.players[window.selfAppealCurrentPlayer];
+
+            window.selfAppealVoterArrayIndex = voterArrayIndex;
+            window.selfAppealCurrentVotes = votes;
+
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">📋 採用審査</div>
+                <div class="modal-text">
+                    <strong>${escapeHtml(voter.name)}</strong> さん、<br>
+                    ${escapeHtml(currentPlayer.name)} を採用しますか？
+                </div>
+                <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
+                    <button class="btn btn-primary" style="font-size:18px;padding:12px 24px;" data-action="selfAppealVoteYes">✅ 採用</button>
+                    <button class="btn btn-secondary" style="font-size:18px;padding:12px 24px;" data-action="selfAppealVoteNo">❌ 不採用</button>
+                </div>
+            `;
+            modal.classList.add('show');
+        }
+
+        function handleSelfAppealVote(isYes) {
+            const newVotes = [...window.selfAppealCurrentVotes, isYes];
+            startSelfAppealVoting(window.selfAppealVoterArrayIndex + 1, newVotes);
+        }
+
+        function finishSelfAppealVoting(votes) {
+            const yesCount = votes.filter(v => v).length;
+            const noCount = votes.filter(v => !v).length;
+            const currentPlayer = gameState.players[window.selfAppealCurrentPlayer];
+
+            // 既存の採用/不採用タグを除去
+            currentPlayer.name = currentPlayer.name.replace(/\((採用|不採用)\)$/, '');
+
+            let tag, resultText;
+            if (yesCount > noCount) {
+                tag = '(採用)';
+                resultText = `採用${yesCount}票 vs 不採用${noCount}票\n${currentPlayer.name} は採用された！`;
+            } else {
+                tag = '(不採用)';
+                resultText = `採用${yesCount}票 vs 不採用${noCount}票\n${currentPlayer.name} は不採用になった...`;
+            }
+            currentPlayer.name += tag;
+
+            renderBoard();
+            updateStatus();
+            showModal('info', resultText, () => nextTurn(), '審査結果');
+        }
+
         // ========== 怒らせたら10進む ==========
         function showAngryRoulette() {
             const currentIdx = gameState.currentPlayerIndex;
@@ -2742,6 +2852,8 @@ const ACTION_HANDLERS = {
     angryYes: () => handleAngryYes(),
     angryNo: () => handleAngryNo(),
     angryNoConfirm: () => handleAngryNoConfirm(),
+    selfAppealVoteYes: () => handleSelfAppealVote(true),
+    selfAppealVoteNo: () => handleSelfAppealVote(false),
 };
 
 document.addEventListener('click', e => {
