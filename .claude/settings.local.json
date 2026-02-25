@@ -31,7 +31,8 @@
       "Bash(netstat -ano)",
       "Bash(xargs -I{} taskkill /PID {} /F)",
       "mcp__serena__get_symbols_overview",
-      "mcp__serena__find_symbol"
+      "mcp__serena__find_symbol",
+      "Bash(sleep 2:*)"
     ]
   }
 }

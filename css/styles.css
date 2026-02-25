@@ -349,7 +349,12 @@
             background: #e5e7eb;
             color: #374151;
         }
-        
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #b91c1c 100%);
+            color: white;
+        }
+
         .btn:active:not(:disabled) {
             transform: scale(0.98);
         }

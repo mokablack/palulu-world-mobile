@@ -57,7 +57,8 @@
             { id: 'nameback', title: '自分の名前の数だけ戻る', text: '名前の文字数分だけ戻ってしまった！', effect: 'nameback' },
             { id: 'ganbare', title: 'がんばれ！', text: 'がんばれ！', effect: 'ganbare' },
             { id: 'resetall', title: '仕切り直し', text: '仕切り直し！全員スタートに戻る！', effect: 'resetall' },
-            { id: 'newstart', title: 'ここをスタートとする！', text: 'ここからが本当のスタートだ！', effect: 'newstart' }
+            { id: 'newstart', title: 'ここをスタートとする！', text: 'ここからが本当のスタートだ！', effect: 'newstart' },
+            { id: 'angry', title: '怒らせたら10進む', text: 'ランダムなプレイヤーを怒らせることができるか？', effect: 'angry' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -1945,6 +1946,12 @@ API Key / Project ID / Database URL を取得して入力
                 return;
             }
 
+            // 怒らせたら10進む：ルーレット＋タイマーダイアログ
+            if (eventEffect.eventEffect === 'angry') {
+                showAngryRoulette();
+                return;
+            }
+
             // がんばれ！：大きなテキスト表示
             if (eventEffect.eventEffect === 'ganbare') {
                 const modal = document.getElementById('modal');
@@ -2473,6 +2480,155 @@ API Key / Project ID / Database URL を取得して入力
             setTimeout(animate, 200);
         }
 
+        // ========== 怒らせたら10進む ==========
+        function showAngryRoulette() {
+            const currentIdx = gameState.currentPlayerIndex;
+            const otherEntries = gameState.players
+                .map((p, i) => ({ player: p, index: i }))
+                .filter(({ index }) => index !== currentIdx);
+
+            if (otherEntries.length === 0) {
+                showModal('info', '他のプレイヤーがいないため、何も起きなかった。', () => nextTurn());
+                return;
+            }
+
+            const finalEntry = otherEntries[Math.floor(Math.random() * otherEntries.length)];
+            const selectedIndex = finalEntry.index;
+
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">😡 怒らせたら10進む！</div>
+                <div class="modal-text" style="margin-bottom:12px;">誰が選ばれる...？</div>
+                <div class="roulette-container" id="angryRouletteItems">
+                    ${otherEntries.map(({ player, index }) => `<div class="roulette-item" id="angryItem_${index}">${escapeHtml(player.name)}</div>`).join('')}
+                </div>
+                <div id="angryRouletteResult" style="margin-top:16px;font-size:18px;font-weight:bold;min-height:28px;color:#d97706;"></div>
+            `;
+            modal.classList.add('show');
+
+            const finalIdx = otherEntries.findIndex(e => e.index === selectedIndex);
+            const frames = [];
+            const minSteps = Math.max(20, 3 * otherEntries.length);
+            for (let i = 0; i < minSteps; i++) { frames.push(i % otherEntries.length); }
+            let last = frames[frames.length - 1];
+            while (last !== finalIdx) {
+                last = (last + 1) % otherEntries.length;
+                frames.push(last);
+            }
+
+            const highlightItem = (idx) => {
+                otherEntries.forEach((e, i) => {
+                    const el = document.getElementById(`angryItem_${e.index}`);
+                    if (el) el.className = 'roulette-item' + (i === idx ? ' roulette-active' : '');
+                });
+            };
+
+            let frameIdx = 0;
+            const animate = () => {
+                if (frameIdx >= frames.length) {
+                    const el = document.getElementById(`angryItem_${selectedIndex}`);
+                    if (el) el.className = 'roulette-item roulette-winner';
+                    const resultDiv = document.getElementById('angryRouletteResult');
+                    if (resultDiv) resultDiv.textContent = `${gameState.players[selectedIndex].name} に決定！`;
+                    setTimeout(() => showAngryDialog(selectedIndex), 1600);
+                    return;
+                }
+                highlightItem(frames[frameIdx]);
+                const progress = frameIdx / frames.length;
+                const delay = progress < 0.6 ? 80 : 80 + Math.pow((progress - 0.6) / 0.4, 2) * 520;
+                frameIdx++;
+                setTimeout(animate, delay);
+            };
+            setTimeout(animate, 200);
+        }
+
+        function showAngryDialog(selectedPlayerIndex) {
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            const selectedPlayer = gameState.players[selectedPlayerIndex];
+            window.angrySelectedPlayerIndex = selectedPlayerIndex;
+
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            let timeLeft = 30;
+
+            content.innerHTML = `
+                <div class="modal-title">😡 あなたが選ばれました！</div>
+                <div class="modal-text">
+                    <strong>${escapeHtml(selectedPlayer.name)}</strong> さん！<br>
+                    ${escapeHtml(currentPlayer.name)} があなたを怒らせようとしている！
+                </div>
+                <div style="font-size:36px;font-weight:bold;color:#ef4444;margin:12px 0;">
+                    残り <span id="angryTimer">30</span> 秒
+                </div>
+                <div class="modal-text">怒りましたか？</div>
+                <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
+                    <button class="btn btn-danger" style="font-size:18px;padding:12px 24px;" data-action="angryYes">😡 怒った！</button>
+                    <button class="btn btn-secondary" style="font-size:18px;padding:12px 24px;" data-action="angryNo">😌 怒ってない</button>
+                </div>
+            `;
+            modal.classList.add('show');
+
+            window.angryTimerId = setInterval(() => {
+                timeLeft--;
+                const timerEl = document.getElementById('angryTimer');
+                if (timerEl) timerEl.textContent = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(window.angryTimerId);
+                    window.angryTimerId = null;
+                    handleAngryNo();
+                }
+            }, 1000);
+        }
+
+        function handleAngryYes() {
+            if (window.angryTimerId) {
+                clearInterval(window.angryTimerId);
+                window.angryTimerId = null;
+            }
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            currentPlayer.position = Math.min(gameState.board.length - 1, currentPlayer.position + 10);
+            renderBoard();
+            updateStatus();
+            document.getElementById('modal').classList.remove('show');
+            showModal('info', `${currentPlayer.name} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+        }
+
+        function handleAngryNo() {
+            if (window.angryTimerId) {
+                clearInterval(window.angryTimerId);
+                window.angryTimerId = null;
+            }
+            const selectedPlayer = gameState.players[window.angrySelectedPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">😌 怒ってない！</div>
+                <div class="modal-text"><strong>${escapeHtml(selectedPlayer.name)}</strong> さん、何マス戻りますか？（1〜10）</div>
+                <input type="number" id="angryBackInput" min="1" max="10" value="3"
+                    style="width:80px;font-size:24px;text-align:center;padding:8px;border:2px solid #d1d5db;border-radius:8px;margin:12px 0;">
+                <div>
+                    <button class="btn btn-primary" style="margin-top:8px;" data-action="angryNoConfirm">決定</button>
+                </div>
+            `;
+            modal.classList.add('show');
+        }
+
+        function handleAngryNoConfirm() {
+            const input = document.getElementById('angryBackInput');
+            const steps = parseInt(input ? input.value : '3');
+            if (isNaN(steps) || steps < 1 || steps > 10) {
+                alert('1から10の数値を入力してください');
+                return;
+            }
+            const selectedPlayer = gameState.players[window.angrySelectedPlayerIndex];
+            selectedPlayer.position = Math.max(0, selectedPlayer.position - steps);
+            renderBoard();
+            updateStatus();
+            document.getElementById('modal').classList.remove('show');
+            showModal('info', `${selectedPlayer.name} は${steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
+        }
+
         function showModal(type, text, callback, titleOverride) {
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
@@ -2583,6 +2739,9 @@ const ACTION_HANDLERS = {
     merchantPickItem: (el) => merchantPickItem(el.dataset.itemId),
     merchantTradeGiveItem: (el) => merchantTradeGiveItem(Number(el.dataset.idx)),
     merchantSelectItem: (el) => merchantSelectItem(el.dataset.itemId),
+    angryYes: () => handleAngryYes(),
+    angryNo: () => handleAngryNo(),
+    angryNoConfirm: () => handleAngryNoConfirm(),
 };
 
 document.addEventListener('click', e => {
