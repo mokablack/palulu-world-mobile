@@ -59,7 +59,9 @@
             { id: 'resetall', title: '仕切り直し', text: '仕切り直し！全員スタートに戻る！', effect: 'resetall' },
             { id: 'newstart', title: 'ここをスタートとする！', text: 'ここからが本当のスタートだ！', effect: 'newstart' },
             { id: 'angry', title: '怒らせたら10進む', text: 'ランダムなプレイヤーを怒らせることができるか？', effect: 'angry' },
-            { id: 'self_appeal', title: '自分をアピールして！', text: '30秒で自己アピールして他プレイヤーの採用を勝ち取れ！', effect: 'self_appeal' }
+            { id: 'self_appeal', title: '自分をアピールして！', text: '30秒で自己アピールして他プレイヤーの採用を勝ち取れ！', effect: 'self_appeal' },
+            { id: 'freemove', title: '好きなだけ進んでいいよ', text: '好きなだけ進んでいいよ！何マス進む？', effect: 'freemove' },
+            { id: 'luckynumber', title: '今日のラッキーナンバーは？', text: 'ラッキーナンバーを入力してください！', effect: 'luckynumber' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -1959,6 +1961,18 @@ API Key / Project ID / Database URL を取得して入力
                 return;
             }
 
+            // 好きなだけ進んでいいよ：数値入力モーダル
+            if (eventEffect.eventEffect === 'freemove') {
+                showFreeMoveDialog();
+                return;
+            }
+
+            // 今日のラッキーナンバーは？：数値入力→ランダム効果
+            if (eventEffect.eventEffect === 'luckynumber') {
+                showLuckyNumberDialog();
+                return;
+            }
+
             // がんばれ！：大きなテキスト表示
             if (eventEffect.eventEffect === 'ganbare') {
                 const modal = document.getElementById('modal');
@@ -2531,6 +2545,105 @@ API Key / Project ID / Database URL を取得して入力
             }, 1000);
         }
 
+        // ========== 好きなだけ進んでいいよ ==========
+        function showFreeMoveDialog() {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const player = gameState.players[gameState.currentPlayerIndex];
+
+            content.innerHTML = `
+                <div class="modal-title">🚶 好きなだけ進んでいいよ</div>
+                <div class="modal-text"><strong>${escapeHtml(player.name)}</strong> さん、何マス進みますか？</div>
+                <div style="margin:16px 0;display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <input type="number" id="freeMoveInput" min="1" max="99" value="1"
+                        style="font-size:28px;width:90px;padding:8px;text-align:center;border:2px solid #667eea;border-radius:8px;">
+                    <span style="font-size:20px;">マス</span>
+                </div>
+                <button class="btn btn-primary" data-action="freeMoveSubmit">進む！</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function freeMoveSubmit() {
+            const input = document.getElementById('freeMoveInput');
+            const num = parseInt(input ? input.value : '0');
+            if (isNaN(num) || num < 1) {
+                alert('1以上の数値を入力してください');
+                return;
+            }
+            const player = gameState.players[gameState.currentPlayerIndex];
+            let newPos = player.position + num;
+            if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+            player.position = newPos;
+            renderBoard();
+            updateStatus();
+            const modal = document.getElementById('modal');
+            modal.classList.remove('show');
+            showModal('info', `${num}マス進んだ！`, () => nextTurn(), '好きなだけ進んでいいよ');
+        }
+
+        // ========== 今日のラッキーナンバーは？ ==========
+        function showLuckyNumberDialog() {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const player = gameState.players[gameState.currentPlayerIndex];
+
+            content.innerHTML = `
+                <div class="modal-title">🍀 今日のラッキーナンバーは？</div>
+                <div class="modal-text"><strong>${escapeHtml(player.name)}</strong> さん、ラッキーナンバーを入力してください！</div>
+                <div style="margin:16px 0;display:flex;align-items:center;justify-content:center;gap:8px;">
+                    <input type="number" id="luckyNumberInput" min="1" max="99" value="7"
+                        style="font-size:28px;width:90px;padding:8px;text-align:center;border:2px solid #fbbf24;border-radius:8px;">
+                </div>
+                <button class="btn btn-primary" data-action="luckyNumberSubmit">決定！</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function luckyNumberSubmit() {
+            const input = document.getElementById('luckyNumberInput');
+            const num = parseInt(input ? input.value : '0');
+            if (isNaN(num) || num < 1) {
+                alert('1以上の数値を入力してください');
+                return;
+            }
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const modal = document.getElementById('modal');
+            modal.classList.remove('show');
+
+            const roll = Math.floor(Math.random() * 4);
+            if (roll === 0) {
+                // 入力数値分 前進
+                let newPos = player.position + num;
+                if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+                player.position = newPos;
+                renderBoard();
+                updateStatus();
+                showModal('info', `ラッキー！${num}マス前進した！`, () => nextTurn(), '今日のラッキーナンバーは？');
+            } else if (roll === 1) {
+                // 入力数値分 後退
+                let newPos = player.position - num;
+                if (newPos < 0) newPos = 0;
+                player.position = newPos;
+                renderBoard();
+                updateStatus();
+                showModal('info', `残念！${num}マス後退した...`, () => nextTurn(), '今日のラッキーナンバーは？');
+            } else if (roll === 2) {
+                // 自分以外が入力数値分後退
+                gameState.players.forEach((p, i) => {
+                    if (i !== gameState.currentPlayerIndex) {
+                        p.position = Math.max(0, p.position - num);
+                    }
+                });
+                renderBoard();
+                updateStatus();
+                showModal('info', `他の全員が${num}マス後退した！`, () => nextTurn(), '今日のラッキーナンバーは？');
+            } else {
+                // ふーん（何も起きない）
+                showModal('info', 'ふーん', () => nextTurn(), '今日のラッキーナンバーは？');
+            }
+        }
+
         function startSelfAppealVoting(voterArrayIndex, votes) {
             const voterIndices = window.selfAppealVoters;
 
@@ -2854,6 +2967,8 @@ const ACTION_HANDLERS = {
     angryNoConfirm: () => handleAngryNoConfirm(),
     selfAppealVoteYes: () => handleSelfAppealVote(true),
     selfAppealVoteNo: () => handleSelfAppealVote(false),
+    freeMoveSubmit: () => freeMoveSubmit(),
+    luckyNumberSubmit: () => luckyNumberSubmit(),
 };
 
 document.addEventListener('click', e => {
