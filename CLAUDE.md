@@ -26,9 +26,9 @@ No build tooling. Open `index.html` directly in any browser.
 ```
 index.html        (~206 lines) — HTML skeleton only
 css/
-  styles.css      (~644 lines) — all styles
+  styles.css      (~693 lines) — all styles
 js/
-  game.js         (~2512 lines) — all game logic
+  game.js         (~2970 lines) — all game logic
 ```
 
 `index.html` loads Font Awesome 6 CDN, `css/styles.css`, Firebase SDK v8 CDN (3 scripts), then `js/game.js`.
@@ -148,29 +148,33 @@ const ITEMS = [
     { id: 'star',       name: 'スター',           icon: '⭐', ... },
     { id: 'curseddoll', name: '呪われた人形',     icon: '🧸', ... },
     { id: 'babel',      name: 'バベル',           icon: '🌀', ... },  // displayed as star externally
-    { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', ... },
+    { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', ... },  // 他プレイヤーのアイテムを1つ奪う
     { id: 'nail',       name: '釘',               icon: '📌', ... },
     { id: 'hammer',     name: 'トンカチ',         icon: '🔨', ... },
     { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', ... },
 ];
 
-// Events (15 total)
+// Events (19 total)
 const EVENTS = [
-    { id: 'merchant',  effect: 'merchant'  },  // 3択アイテム選択UI
-    { id: 'wind',      effect: -2          },
-    { id: 'goddess',   effect: 'extraTurn' },
-    { id: 'pit',       effect: 'skip'      },
-    { id: 'tailwind',  effect: 3           },
-    { id: 'storm',     effect: 'storm'     },
-    { id: 'blackhole', effect: 'blackhole' },
-    { id: 'whitehole', effect: 'whitehole' },
-    { id: 'mask',      effect: 'mask'      },  // 別の覆面マスへワープ
-    { id: 'average',   effect: 'average'   },  // 全員同じマスへ
-    { id: 'forceend',  effect: 'forceend'  },  // 強制ゲーム終了
-    { id: 'nameback',  effect: 'nameback'  },  // 名前文字数分戻る
-    { id: 'ganbare',   effect: 'ganbare'   },  // 大テキスト表示のみ
-    { id: 'resetall',  effect: 'resetall'  },  // 全員スタートへ
-    { id: 'newstart',  effect: 'newstart'  },  // 盤面再構成
+    { id: 'merchant',    effect: 'merchant'    },  // 3択アイテム選択UI
+    { id: 'wind',        effect: -2            },
+    { id: 'goddess',     effect: 'extraTurn'   },
+    { id: 'pit',         effect: 'skip'        },
+    { id: 'tailwind',    effect: 3             },
+    { id: 'storm',       effect: 'storm'       },
+    { id: 'blackhole',   effect: 'blackhole'   },
+    { id: 'whitehole',   effect: 'whitehole'   },
+    { id: 'mask',        effect: 'mask'        },  // 別の覆面マスへワープ
+    { id: 'average',     effect: 'average'     },  // 全員同じマスへ
+    { id: 'forceend',    effect: 'forceend'    },  // 強制ゲーム終了
+    { id: 'nameback',    effect: 'nameback'    },  // 名前文字数分戻る
+    { id: 'ganbare',     effect: 'ganbare'     },  // 見出しのみ表示（本文なし）
+    { id: 'resetall',    effect: 'resetall'    },  // 全員スタートへ
+    { id: 'newstart',    effect: 'newstart'    },  // 盤面再構成
+    { id: 'angry',       effect: 'angry'       },  // ルーレット→選ばれたPが進む/戻る
+    { id: 'self_appeal', effect: 'self_appeal' },  // 30秒アピール→他PL投票で進む
+    { id: 'freemove',    effect: 'freemove'    },  // 任意のマス数入力して前進
+    { id: 'luckynumber', effect: 'luckynumber' },  // 数値入力→ランダム効果
 ];
 ```
 
@@ -195,7 +199,7 @@ const EVENTS = [
 | `showMerchantDialog()` | 3択アイテム選択UI for 怪しい商人 event; each offer has 25% chance of being fake (消滅) |
 | `useKagemaiha()` | Move to 1-rank-above player's tile, apply tile effect without dice |
 | `nextTurn()` | Advance turn; handles skip, nailPlacement prompt |
-| `showModal(type, message, callback?)` | `type`: `'info'` \| `'win'` \| `'vanished'` |
+| `showModal(type, message, callback?, titleOverride?)` | `type`: `'info'` \| `'win'` \| `'vanished'`; `titleOverride` replaces default title |
 | `buildResultText(winnerName)` | Build ranked result string for win modal |
 | `createOnlineRoom()` / `joinOnlineRoom()` | Online multiplayer functions |
 
@@ -205,11 +209,19 @@ const EVENTS = [
 
 Post-roll items (`koshindo`, `sakasama`) are triggered after landing.
 
-> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in two separate code paths (around L1803 and L1817). If you add items to this list, update both occurrences.
+> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in two separate code paths inside `rollDice()` — once for the `hasPreRollItems` check and once inside `promptItemUsage()`. If you add items to this list, update **both** occurrences. Also note: `hammer` has an additional same-tile check in both occurrences — match this pattern for any item with a precondition.
 
 ### babel display rule
 
 `babel` is stored as `'babel'` in `player.items` but displayed as `⭐ スター` everywhere via `itemLabel()` and explicit `displayId = itemId === 'babel' ? 'star' : itemId` guards.
+
+### handleEvent dispatch pattern
+
+`handleEvent(eventEffect)` processes events in this order:
+1. Early-return for events with custom UI: `merchant`, `angry`, `self_appeal`, `freemove`, `luckynumber`, `ganbare`, `newstart`, `forceend`
+2. Remaining effects (`item`, `extraTurn`, `skip`, numeric, `storm`, `blackhole`, `whitehole`, `mask`, `average`, `nameback`, `resetall`) set a `callback` then fall through to a single `showModal('info', eventText, callback, eventEffect.eventTitle)` at the end.
+
+When adding a new event with simple text + effect, use the callback pattern. For custom UI (multi-step dialog, timers, etc.), add an early-return block before the shared `showModal` call.
 
 ---
 
