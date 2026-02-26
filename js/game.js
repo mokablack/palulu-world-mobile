@@ -20,7 +20,7 @@
             { id: 'star',       name: 'スター',           icon: '⭐', effect: 'リザルトに記録される（効果なし）' },
             { id: 'curseddoll', name: '呪われた人形',     icon: '🧸', effect: '他プレイヤーのマス効果を代わりに受けることがある（受動）' },
             { id: 'babel',      name: 'バベル',           icon: '🌀', effect: 'ゲーム終了後、選択したプレイヤーと順位を入れ替える' },
-            { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', effect: '自分のアイテムを他プレイヤーのアイテムと交換する' },
+            { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', effect: '他プレイヤーのアイテムを1つ奪う' },
             { id: 'nail',       name: '釘',               icon: '📌', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
             { id: 'hammer',     name: 'トンカチ',         icon: '🔨', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
             { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
@@ -1099,7 +1099,13 @@ API Key / Project ID / Database URL を取得して入力
 
             // サイコロ前に使えるアイテムがある場合のみ確認を出す
             const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha'];
-            const hasPreRollItems = currentPlayer.items.some(id => PRE_ROLL_ITEMS.includes(id));
+            const hasPreRollItems = currentPlayer.items.some(id => {
+                if (!PRE_ROLL_ITEMS.includes(id)) return false;
+                if (id === 'hammer') {
+                    return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.position === currentPlayer.position);
+                }
+                return true;
+            });
             if (hasPreRollItems) {
                 promptItemUsage();
             } else {
@@ -1115,7 +1121,13 @@ API Key / Project ID / Database URL を取得して入力
             const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha'];
             const usableEntries = player.items
                 .map((itemId, index) => ({ itemId, index }))
-                .filter(({ itemId }) => PRE_ROLL_ITEMS.includes(itemId));
+                .filter(({ itemId }) => {
+                    if (!PRE_ROLL_ITEMS.includes(itemId)) return false;
+                    if (itemId === 'hammer') {
+                        return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.position === player.position);
+                    }
+                    return true;
+                });
 
             const itemsHtml = usableEntries.map(({ itemId, index }) => {
                 const itemData = ITEMS.find(i => i.id === itemId);
@@ -1185,7 +1197,7 @@ API Key / Project ID / Database URL を取得して入力
                     break;
                 }
                 case 'snatcher':
-                    promptSnatcherOwnItem();
+                    promptSnatcherTargetPlayer();
                     break;
                 case 'babel':
                     promptBabelTarget(() => doRollDice());
@@ -1669,71 +1681,48 @@ API Key / Project ID / Database URL を取得して入力
         }
 
         // ========== スナッチャー ==========
-        function promptSnatcherOwnItem() {
-            const player = gameState.players[gameState.currentPlayerIndex];
-            const modal = document.getElementById('modal');
-            const content = document.getElementById('modalContent');
-            if (player.items.length === 0) {
-                showModal('info', '交換できるアイテムがありません', () => doRollDice());
-                return;
-            }
-            const itemsHtml = player.items.map((itemId, index) => {
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="snatcherPickTarget" data-idx="${index}">${itemLabel(itemId)}</button>`;
-            }).join('');
-            content.innerHTML = `
-                <div class="modal-title">スナッチャー</div>
-                <div class="modal-text">交換する自分のアイテムを選んでください</div>
-                ${itemsHtml}
-                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="closeModalThenRollDice">キャンセル</button>
-            `;
-            modal.classList.add('show');
-        }
-
-        function snatcherPickTarget(ownItemIndex) {
-            closeModal();
+        function promptSnatcherTargetPlayer() {
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const playersHtml = gameState.players.map((p, i) => {
                 if (i === gameState.currentPlayerIndex) return '';
                 if (p.items.length === 0) return `<button class="btn btn-secondary" style="margin:4px;width:100%;" disabled>${escapeHtml(p.name)}（アイテムなし）</button>`;
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="snatcherPickItem" data-own-idx="${ownItemIndex}" data-target-idx="${i}">${escapeHtml(p.name)}</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="snatcherSelectPlayer" data-idx="${i}">${escapeHtml(p.name)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">スナッチャー</div>
-                <div class="modal-text">交換相手を選んでください</div>
+                <div class="modal-text">アイテムを奪う相手を選んでください</div>
                 ${playersHtml}
                 <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="closeModalThenRollDice">キャンセル</button>
             `;
             modal.classList.add('show');
         }
 
-        function snatcherPickItem(ownItemIndex, targetPlayerIndex) {
+        function snatcherSelectPlayer(targetPlayerIndex) {
             closeModal();
             const targetPlayer = gameState.players[targetPlayerIndex];
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             const itemsHtml = targetPlayer.items.map((itemId, index) => {
-                return `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="executeSnatch" data-own-idx="${ownItemIndex}" data-target-player="${targetPlayerIndex}" data-idx="${index}">${itemLabel(itemId)}</button>`;
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="snatcherStealItem" data-target="${targetPlayerIndex}" data-idx="${index}">${itemLabel(itemId)}</button>`;
             }).join('');
             content.innerHTML = `
                 <div class="modal-title">スナッチャー</div>
-                <div class="modal-text">${escapeHtml(targetPlayer.name)}のどのアイテムと交換しますか？</div>
+                <div class="modal-text">${escapeHtml(targetPlayer.name)}のどのアイテムを奪いますか？</div>
                 ${itemsHtml}
                 <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="closeModalThenRollDice">キャンセル</button>
             `;
             modal.classList.add('show');
         }
 
-        function executeSnatch(ownItemIndex, targetPlayerIndex, targetItemIndex) {
+        function snatcherStealItem(targetPlayerIndex, targetItemIndex) {
             const player = gameState.players[gameState.currentPlayerIndex];
             const targetPlayer = gameState.players[targetPlayerIndex];
-            const ownItemId = player.items[ownItemIndex];
-            const targetItemId = targetPlayer.items[targetItemIndex];
-            player.items[ownItemIndex] = targetItemId;
-            targetPlayer.items[targetItemIndex] = ownItemId;
+            const stolenItemId = targetPlayer.items.splice(targetItemIndex, 1)[0];
+            player.items.push(stolenItemId);
             closeModal();
             updateStatus();
-            showModal('info', `スナッチャー発動！\n「${itemLabel(ownItemId)}」と「${itemLabel(targetItemId)}」を交換した！`, () => doRollDice());
+            showModal('info', `スナッチャー発動！\n${escapeHtml(targetPlayer.name)}から「${itemLabel(stolenItemId)}」を奪った！`, () => doRollDice());
         }
 
         // ========== トンカチ ==========
@@ -1973,12 +1962,12 @@ API Key / Project ID / Database URL を取得して入力
                 return;
             }
 
-            // がんばれ！：大きなテキスト表示
+            // がんばれ！：見出しのみ表示
             if (eventEffect.eventEffect === 'ganbare') {
                 const modal = document.getElementById('modal');
                 const content = document.getElementById('modalContent');
                 content.innerHTML = `
-                    <div style="font-size:56px;font-weight:bold;text-align:center;padding:20px 10px;">がんばれ！</div>
+                    <div class="modal-title">がんばれ！</div>
                     <button class="btn btn-primary" data-action="closeModalThenNextTurn">OK</button>
                 `;
                 modal.classList.add('show');
@@ -2953,9 +2942,8 @@ const ACTION_HANDLERS = {
     useKoshindo: (el) => useKoshindo(Number(el.dataset.idx)),
     closeModalThenExecuteTile: (el) => { closeModal(); executeTileEffect(gameState.board[Number(el.dataset.pos)]); },
     setBabelTarget: (el) => setBabelTarget(Number(el.dataset.idx)),
-    snatcherPickTarget: (el) => snatcherPickTarget(Number(el.dataset.idx)),
-    snatcherPickItem: (el) => snatcherPickItem(Number(el.dataset.ownIdx), Number(el.dataset.targetIdx)),
-    executeSnatch: (el) => executeSnatch(Number(el.dataset.ownIdx), Number(el.dataset.targetPlayer), Number(el.dataset.idx)),
+    snatcherSelectPlayer: (el) => snatcherSelectPlayer(Number(el.dataset.idx)),
+    snatcherStealItem: (el) => snatcherStealItem(Number(el.dataset.target), Number(el.dataset.idx)),
     useHammerOn: (el) => useHammerOn(Number(el.dataset.idx)),
     destroyDollOf: (el) => destroyDollOf(Number(el.dataset.idx)),
     confirmNailPlacement: (el) => confirmNailPlacement(Number(el.dataset.nailIdx), Number(el.dataset.pos)),
