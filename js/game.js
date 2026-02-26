@@ -2513,8 +2513,7 @@ API Key / Project ID / Database URL を取得して入力
             content.innerHTML = `
                 <div class="modal-title">📣 自分をアピールして！</div>
                 <div class="modal-text">
-                    <strong>${escapeHtml(currentPlayer.name)}</strong> さんのアピールタイム！<br>
-                    他のプレイヤーを説得してください！
+                    <strong>${escapeHtml(currentPlayer.name)}</strong> さんのアピールタイム！
                 </div>
                 <div style="font-size:36px;font-weight:bold;color:#667eea;margin:12px 0;">
                     残り <span id="selfAppealTimer">30</span> 秒
