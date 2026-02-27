@@ -2880,12 +2880,12 @@ API Key / Project ID / Database URL を取得して入力
                 clearInterval(window.angryTimerId);
                 window.angryTimerId = null;
             }
-            const selectedPlayer = gameState.players[window.angrySelectedPlayerIndex];
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
             content.innerHTML = `
                 <div class="modal-title">😌 怒ってない！</div>
-                <div class="modal-text"><strong>${escapeHtml(selectedPlayer.name)}</strong> さん、何マス戻りますか？（1〜10）</div>
+                <div class="modal-text"><strong>${escapeHtml(currentPlayer.name)}</strong> さん、何マス戻りますか？（1〜10）</div>
                 <input type="number" id="angryBackInput" min="1" max="10" value="3"
                     style="width:80px;font-size:24px;text-align:center;padding:8px;border:2px solid #d1d5db;border-radius:8px;margin:12px 0;">
                 <div>
@@ -2902,12 +2902,12 @@ API Key / Project ID / Database URL を取得して入力
                 alert('1から10の数値を入力してください');
                 return;
             }
-            const selectedPlayer = gameState.players[window.angrySelectedPlayerIndex];
-            selectedPlayer.position = Math.max(0, selectedPlayer.position - steps);
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            currentPlayer.position = Math.max(0, currentPlayer.position - steps);
             renderBoard();
             updateStatus();
             document.getElementById('modal').classList.remove('show');
-            showModal('info', `${selectedPlayer.name} は${steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
+            showModal('info', `${currentPlayer.name} は${steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
         }
 
         function showModal(type, text, callback, titleOverride) {
