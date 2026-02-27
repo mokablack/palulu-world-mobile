@@ -264,7 +264,7 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 - **UI strings**: Japanese only — do not change to English
 - **Section headers**: `// ========== Section Name ==========`
-- **External CDN libraries**: Firebase SDK v8 CDN + Font Awesome 6.5.2 CDN — no other external dependencies
+- **External CDN libraries**: Firebase SDK v11 Compat CDN + Font Awesome 6.7.2 CDN — no other external dependencies
 - **State mutations**: mutate `gameState` directly, then call `render*()` functions
 - **DOM updates**: regenerate `innerHTML`; avoid partial mutations
 - **XSS safety**: always wrap user-supplied strings in `escapeHtml()` before injecting into `innerHTML`
