@@ -690,6 +690,7 @@
             if (mode !== 'play') {
                 const banner = document.getElementById('currentPlayerBanner');
                 if (banner) banner.classList.add('hidden');
+                document.getElementById('playScreen').classList.remove('with-banner');
                 const panel = document.getElementById('playerListPanel');
                 if (panel) {
                     panel.classList.add('hidden');
@@ -2345,6 +2346,7 @@ API Key / Project ID / Database URL を取得して入力
             if (gameState.playMode !== 'single') {
                 banner.textContent = `${player.name}のターン`;
                 banner.classList.remove('hidden');
+                document.getElementById('playScreen').classList.add('with-banner');
 
                 // プレイヤー一覧パネルを更新
                 renderPlayerListPanel();
