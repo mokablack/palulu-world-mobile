@@ -679,6 +679,10 @@
                 document.getElementById('playScreen').classList.remove('hidden');
             }
 
+            // Firebase設定はエディターモードのみ表示
+            const firebaseSection = document.getElementById('firebaseConfigSection');
+            if (firebaseSection) firebaseSection.classList.toggle('hidden', mode !== 'editor');
+
             // ゲームを終了ボタンはプレイ中のみ表示
             document.getElementById('exitGameBtn').classList.toggle('hidden', mode !== 'play');
 

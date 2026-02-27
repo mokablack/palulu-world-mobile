@@ -35,7 +35,8 @@
       "Bash(sleep 2:*)",
       "mcp__serena__insert_after_symbol",
       "Bash(npx serve:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(git:*)"
     ]
   }
 }

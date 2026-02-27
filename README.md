@@ -45,10 +45,11 @@ Realtime DatabaseのルールタブにページTo内の「セキュリティル�
 2. 「全般」タブの「マイアプリ」→ ウェブアプリを登録（未登録の場合）
 3. 「firebaseConfig」オブジェクトから以下をメモします：
    - `apiKey`
+   - `projectId`
    - `databaseURL`
 
 ### 4. ゲームへの設定入力
 
-1. ページ上部の「Firebase設定」フォームに `APIキー` と `Database URL` を入力
+1. エディター画面の「Firebase設定」フォームに `APIキー`・`プロジェクトID`・`Database URL` を入力
 2. 「保存」を押すと設定がブラウザに保存されます
 3. 「オンラインマルチ」タブからルームの作成または参加ができます

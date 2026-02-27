@@ -24,11 +24,11 @@ No build tooling. Open `index.html` directly in any browser.
 ### File Structure
 
 ```
-index.html        (~206 lines) — HTML skeleton only
+index.html        (~216 lines) — HTML skeleton only
 css/
-  styles.css      (~693 lines) — all styles
+  styles.css      (~762 lines) — all styles
 js/
-  game.js         (~2970 lines) — all game logic
+  game.js         (~3046 lines) — all game logic
 ```
 
 `index.html` loads Font Awesome 6 CDN, `css/styles.css`, Firebase SDK v8 CDN (3 scripts), then `js/game.js`.
@@ -50,11 +50,11 @@ js/
 13. オンラインマルチ (Firebase実装)
 14. ゲームプレイ — dice, movement, tile effects
 15. アイテム取得共通処理
-16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 釘 (per-item handlers)
-17. 怪しい商人UI — `showMerchantDialog()` and related (~L2784)
-18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()`
-19. イベント委譲ディスパッチャー — `ACTION_HANDLERS` + `document.addEventListener('click', ...)`
-20. 起動 — `init()` call
+16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 釘＋トンカチコンボ / 釘の設置 (per-item handlers, L1582–L1879)
+17. 怪しい商人UI — `showMerchantDialog()` and related (L2171)
+18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()` (L2449)
+19. 自分をアピールして！ / 好きなだけ進んでいいよ / 今日のラッキーナンバーは？ / 怒らせたら10進む (custom event UIs, L2561–L2960)
+20. イベント委譲ディスパッチャー — `closeModal*` bridge functions, `ACTION_HANDLERS`, `document.addEventListener('click', ...)`, `init()` call (L2963)
 
 ---
 
@@ -103,11 +103,11 @@ let gameState = {
 
 ```javascript
 {
-    id: 'normal' | 'forward' | 'backward' | 'item' | 'event' | 'start' | 'goal',
+    id: 'normal' | 'forward' | 'backward' | 'item' | 'event' | 'rest' | 'start' | 'goal',
     name: string,
     color: string,          // CSS class e.g. 'tile-normal'
     effect: null | {
-        type: 'move' | 'item' | 'event',
+        type: 'move' | 'item' | 'event' | 'rest',
         value?: number,
         eventId?: string,
         eventTitle?: string,
@@ -115,6 +115,7 @@ let gameState = {
         eventEffect?: number | 'merchant' | 'extraTurn' | 'skip' | 'storm'
                     | 'blackhole' | 'whitehole' | 'mask' | 'average'
                     | 'forceend' | 'nameback' | 'ganbare' | 'resetall' | 'newstart'
+                    | 'angry' | 'self_appeal' | 'freemove' | 'luckynumber'
     }
 }
 ```
@@ -136,6 +137,7 @@ let gameState = {
 
 ```javascript
 const TILE_TYPES = { NORMAL, FORWARD, BACKWARD, ITEM, EVENT, REST, START, GOAL };
+// REST: { id: 'rest', name: '休み', color: 'tile-rest', effect: { type: 'rest', value: 1 } }
 
 // Items (13 total) — each has id, name, icon (emoji), effect (string)
 const ITEMS = [
@@ -190,6 +192,7 @@ const EVENTS = [
 | `switchMode(mode)` | Navigate between editor / items / events / play screens via `ALL_MODES` table |
 | `initializeBoard()` | Reset board to default |
 | `renderBoard()` | Re-render board grid from `gameState.board`; shows FA icons for item/blackhole/whitehole tiles |
+| `generateRandomStage()` | Generate a random board (~40% normal / ~30% item / ~30% event) |
 | `saveStage()` / `loadStage()` | Persist/restore board to localStorage |
 | `startSinglePlay()` / `startLocalMulti()` | Transition to active gameplay |
 | `rollDice()` | Animate dice and compute movement |
@@ -201,6 +204,10 @@ const EVENTS = [
 | `nextTurn()` | Advance turn; handles skip, nailPlacement prompt |
 | `showModal(type, message, callback?, titleOverride?)` | `type`: `'info'` \| `'win'` \| `'vanished'`; `titleOverride` replaces default title |
 | `buildResultText(winnerName)` | Build ranked result string for win modal |
+| `eliminatePlayer()` | Remove current player from `gameState.players` (blackhole); triggers `'vanished'` modal if last player |
+| `renderPlayerListPanel()` | Re-render the slide-in player list panel (local/online multi only) |
+| `togglePlayerList()` | Open/close the left-side player panel |
+| `exitGame()` | Return to playMode screen and reset game state |
 | `createOnlineRoom()` / `joinOnlineRoom()` | Online multiplayer functions |
 
 ### Pre-roll items (usable before dice)
@@ -264,17 +271,41 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 - **User-facing errors**: `showModal('info', message)`
 - **Developer feedback**: `console.log` / `console.error`
 
+### `data-action` / `closeModal*` bridge pattern
+
+`ACTION_HANDLERS` (global scope, L2963) dispatches all `data-action` button clicks. Functions called from `data-action` must be in global scope. Multi-step dialogs that need a callback after modal close use one of the pre-defined bridge functions:
+
+```javascript
+// L2964-2969 (global scope, outside main function body)
+closeModalThenRollDice()      // closeModal() + doRollDice()
+closeModalThenNextTurn()      // closeModal() + nextTurn()
+closeModalThenSwitchEditor()  // closeModal() + switchMode('editor')
+closeModalThenSwitchPlayMode()// closeModal() + switchMode('playMode')
+closeModalThenRestartOnline() // closeModal() + restartOnlineGame()
+closeModalThenNailCallback()  // closeModal() + window.nailCallback()
+```
+
+Add new bridge functions here when a `data-action` button needs to call a function that isn't already in `ACTION_HANDLERS`.
+
+### `window.*` global state for multi-step UI flows
+
+Multi-step dialogs (merchant, nail, self_appeal, etc.) pass state between `data-action` invocations via `window.*`:
+
+| Variable | Used by |
+|---|---|
+| `window.modalCallback` | `handleModalOk()` — shared callback for OK-button modals |
+| `window.nailCallback` | nail placement confirmation |
+| `window.merchantItems3`, `window.merchantRemaining`, `window.merchantPicked` | merchant dialog state |
+| `window.selfAppealCurrentPlayer`, `window.selfAppealVoters`, `window.selfAppealTimerId`, `window.selfAppealVoterArrayIndex`, `window.selfAppealCurrentVotes` | self_appeal event flow |
+
 ---
 
 ## Firebase / Online Multiplayer
 
-Firebase SDK v8 is loaded via CDN in `index.html` (3 `<script>` tags before `js/game.js`). Room creation and game sync are implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
+Firebase SDK v8 is loaded via CDN in `index.html` (3 `<script>` tags before `js/game.js`). Room creation, game sync, waiting room player list, and host-triggered game start are all implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
 
-Remaining TODOs (marked `// TODO` in code):
-- `updateWaitingPlayers()` — real-time player list in waiting room
-- `startOnlineGame()` — host-triggered game start
-
-Do **not** remove stub functions — they define the expected API surface.
+Remaining TODO (marked `// TODO` in code):
+- Firebase v8 → v9 Modular migration (CDN v8 is legacy; deferred)
 
 ---
 
@@ -286,8 +317,6 @@ Do **not** remove stub functions — they define the expected API surface.
 
 ---
 
-## Long-term TODOs (from `text/codex review.md`)
+## Long-term TODOs
 
-- [x] **CSS/JS separation** — `css/styles.css` + `js/game.js` に分離済み
-- [x] **`onclick` migration** — 70箇所を `data-action` + `ACTION_HANDLERS` に移行済み
 - [ ] **Firebase v8 → v9 Modular** — CDN v8 is legacy; migration deferred
