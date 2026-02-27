@@ -55,6 +55,14 @@
         .firebase-config.configured h3 {
             color: #155724;
         }
+
+        .firebase-config-header:hover {
+            opacity: 0.8;
+        }
+
+        .firebase-config-body {
+            margin-top: 8px;
+        }
         
         .firebase-config input {
             width: 100%;
@@ -209,11 +217,53 @@
 
         /* プレイヤー一覧パネル */
         .player-list-panel {
+            position: fixed;
+            top: 0;
+            left: -310px;
+            bottom: 0;
+            width: 300px;
+            z-index: 400;
             background: #f8f9ff;
-            border: 1px solid #dde3ff;
-            border-radius: 12px;
-            padding: 8px;
-            margin: 10px 0;
+            border-right: 1px solid #dde3ff;
+            border-radius: 0;
+            padding: 16px 8px;
+            margin: 0;
+            overflow-y: auto;
+            transition: left 0.3s ease;
+            box-shadow: 2px 0 15px rgba(0,0,0,0.15);
+        }
+
+        .player-list-panel.open {
+            left: 0;
+        }
+
+        .player-list-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.4);
+            z-index: 399;
+        }
+
+        .player-list-toggle {
+            position: fixed;
+            bottom: 80px;
+            right: 16px;
+            z-index: 350;
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-size: 22px;
+            border: none;
+            box-shadow: 0 4px 15px rgba(102,126,234,0.5);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
         .player-list-row {
@@ -366,8 +416,17 @@
         
         /* サイコロ */
         .dice-container {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 200;
             text-align: center;
-            margin: 20px 0;
+            background: rgba(255,255,255,0.95);
+            padding: 10px 20px;
+            border-radius: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            margin: 0;
         }
         
         .dice {
@@ -421,14 +480,24 @@
         }
         
         .current-player-banner {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 300;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             padding: 15px;
-            border-radius: 10px;
+            border-radius: 0;
             text-align: center;
             font-size: 18px;
             font-weight: bold;
-            margin-bottom: 15px;
+            margin-bottom: 0;
+        }
+
+        #playScreen {
+            padding-top: 60px;
+            padding-bottom: 150px;
         }
         
         /* モーダル */

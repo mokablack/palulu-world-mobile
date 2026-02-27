@@ -102,6 +102,7 @@
         // ========== 初期化 ==========
         function init() {
             loadFirebaseConfig();
+            setFirebaseConfigCollapsed(!!gameState.firebaseConfig);
             loadEnabledItems();
             initializeBoard();
             renderPalette();
@@ -117,6 +118,14 @@
         }
         
         // ========== Firebase設定 ==========
+        function setFirebaseConfigCollapsed(isCollapsed) {
+            const body = document.querySelector('.firebase-config-body');
+            const icon = document.getElementById('firebaseToggleIcon');
+            if (!body) return;
+            body.classList.toggle('hidden', isCollapsed);
+            if (icon) icon.textContent = isCollapsed ? '▼' : '▲';
+        }
+
         function loadFirebaseConfig() {
             const saved = localStorage.getItem('firebaseConfig');
             if (!saved) return;
@@ -133,6 +142,7 @@
             document.getElementById('firebaseConfigForm').classList.add('hidden');
             document.getElementById('firebaseConfigured').classList.remove('hidden');
             document.getElementById('firebaseConfigSection').classList.add('configured');
+            setFirebaseConfigCollapsed(true);
             initializeFirebase();
         }
 
@@ -153,6 +163,7 @@
             document.getElementById('firebaseConfigForm').classList.add('hidden');
             document.getElementById('firebaseConfigured').classList.remove('hidden');
             document.getElementById('firebaseConfigSection').classList.add('configured');
+            setFirebaseConfigCollapsed(true);
 
             initializeFirebase();
             showModal('info', 'Firebase設定を保存しました！\nオンラインマルチプレイが利用可能です。');
@@ -171,6 +182,7 @@
             document.getElementById('firebaseConfigForm').classList.remove('hidden');
             document.getElementById('firebaseConfigured').classList.add('hidden');
             document.getElementById('firebaseConfigSection').classList.remove('configured');
+            setFirebaseConfigCollapsed(false);
 
             showModal('info', 'Firebase設定をクリアしました');
         }
@@ -675,7 +687,29 @@
                 const banner = document.getElementById('currentPlayerBanner');
                 if (banner) banner.classList.add('hidden');
                 const panel = document.getElementById('playerListPanel');
-                if (panel) panel.classList.add('hidden');
+                if (panel) {
+                    panel.classList.add('hidden');
+                    panel.classList.remove('open');
+                }
+                const overlay = document.getElementById('playerListOverlay');
+                if (overlay) overlay.classList.add('hidden');
+                const toggle = document.getElementById('playerListToggle');
+                if (toggle) toggle.classList.add('hidden');
+            } else {
+                const panel = document.getElementById('playerListPanel');
+                const toggle = document.getElementById('playerListToggle');
+                if (gameState.playMode !== 'single') {
+                    if (panel) panel.classList.remove('hidden');
+                    if (toggle) toggle.classList.remove('hidden');
+                } else {
+                    if (panel) {
+                        panel.classList.add('hidden');
+                        panel.classList.remove('open');
+                    }
+                    if (toggle) toggle.classList.add('hidden');
+                    const overlay = document.getElementById('playerListOverlay');
+                    if (overlay) overlay.classList.add('hidden');
+                }
             }
 
             renderBoard();
@@ -713,6 +747,9 @@
             }];
             gameState.currentPlayerIndex = 0;
             switchMode('play');
+            document.getElementById('playerListToggle').classList.add('hidden');
+            document.getElementById('playerListOverlay').classList.add('hidden');
+            document.getElementById('playerListPanel').classList.remove('open');
             updateStatus();
         }
         
@@ -743,6 +780,9 @@
 
             gameState.currentPlayerIndex = 0;
             switchMode('play');
+            document.getElementById('playerListToggle').classList.remove('hidden');
+            document.getElementById('playerListPanel').classList.remove('open');
+            document.getElementById('playerListOverlay').classList.add('hidden');
             updateStatus();
         }
         
@@ -1139,10 +1179,12 @@ API Key / Project ID / Database URL を取得して入力
                 const itemData = ITEMS.find(i => i.id === itemId);
                 if (!itemData) return '';
                 return `
-                    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin:6px 0;text-align:left;">
+                    <div style="border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin:6px 0;text-align:left;display:flex;flex-direction:column;">
                         <div style="font-weight:bold;margin-bottom:4px;">${itemData.icon} ${itemData.name}</div>
                         <div style="font-size:12px;color:#666;margin-bottom:8px;">${itemData.effect}</div>
-                        <button class="btn btn-primary" style="font-size:13px;padding:6px 14px;" data-action="useItem" data-idx="${index}">使う</button>
+                        <div style="text-align:right;margin-top:8px;">
+                            <button class="btn btn-primary" style="font-size:13px;padding:6px 14px;" data-action="useItem" data-idx="${index}">使う</button>
+                        </div>
                     </div>
                 `;
             }).join('');
@@ -2300,6 +2342,8 @@ API Key / Project ID / Database URL を取得して入力
 
                 // プレイヤー一覧パネルを更新
                 renderPlayerListPanel();
+                document.getElementById('playerListPanel').classList.remove('hidden');
+                document.getElementById('playerListToggle').classList.remove('hidden');
 
                 // シングルプレイ用要素を隠す
                 document.getElementById('status').classList.add('hidden');
@@ -2308,6 +2352,9 @@ API Key / Project ID / Database URL を取得して入力
                 // シングルプレイ: 従来のステータス表示
                 banner.classList.add('hidden');
                 document.getElementById('playerListPanel').classList.add('hidden');
+                document.getElementById('playerListPanel').classList.remove('open');
+                document.getElementById('playerListToggle').classList.add('hidden');
+                document.getElementById('playerListOverlay').classList.add('hidden');
 
                 const status = document.getElementById('status');
                 status.classList.remove('hidden');
@@ -2355,7 +2402,16 @@ API Key / Project ID / Database URL を取得して入力
                     </div>
                 `;
             }).join('');
-            panel.classList.remove('hidden');
+        }
+
+        function togglePlayerList() {
+            const panel = document.getElementById('playerListPanel');
+            const overlay = document.getElementById('playerListOverlay');
+            if (!panel || !overlay || gameState.playMode === 'single' || gameState.mode !== 'play') return;
+
+            const isOpen = panel.classList.contains('open');
+            panel.classList.toggle('open', !isOpen);
+            overlay.classList.toggle('hidden', isOpen);
         }
         
         function exitGame() {
@@ -2909,6 +2965,14 @@ function closeModalThenNailCallback() { closeModal(); window.nailCallback(); }
 const ACTION_HANDLERS = {
     switchMode: (el) => switchMode(el.dataset.arg),
     saveFirebaseConfig: () => saveFirebaseConfig(),
+    toggleFirebaseConfig: () => {
+        const body = document.querySelector('.firebase-config-body');
+        const icon = document.getElementById('firebaseToggleIcon');
+        if (body) {
+            body.classList.toggle('hidden');
+            if (icon) icon.textContent = body.classList.contains('hidden') ? '▼' : '▲';
+        }
+    },
     showSecurityRules: () => showSecurityRules(),
     clearFirebaseConfig: () => clearFirebaseConfig(),
     generateRandomStage: () => generateRandomStage(),
@@ -2923,6 +2987,7 @@ const ACTION_HANDLERS = {
     joinOnlineRoom: () => joinOnlineRoom(),
     startOnlineGame: () => startOnlineGame(),
     leaveRoom: () => leaveRoom(),
+    togglePlayerList: () => togglePlayerList(),
     rollDice: () => rollDice(),
     exitGame: () => exitGame(),
     closeModal: () => closeModal(),

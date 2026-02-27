@@ -15,18 +15,23 @@
         
         <!-- Firebase設定セクション -->
         <div id="firebaseConfigSection" class="firebase-config">
-            <h3>⚙️ Firebase設定 (オンラインマルチプレイ用)</h3>
-            <div id="firebaseConfigForm">
-                <input type="text" id="apiKey" placeholder="API Key">
-                <input type="text" id="projectId" placeholder="Project ID (例: my-game-12345)">
-                <input type="text" id="databaseURL" placeholder="Database URL (例: https://my-game-12345-default-rtdb.firebaseio.com)">
-                <button class="btn btn-secondary" style="margin-top:6px;" data-action="showSecurityRules">📋 セットアップ手順を確認</button>
-                <button class="btn btn-primary" data-action="saveFirebaseConfig">設定を保存</button>
+            <div class="firebase-config-header" data-action="toggleFirebaseConfig" style="cursor:pointer;display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                <span>🔥 Firebase設定</span>
+                <span id="firebaseToggleIcon">▼</span>
             </div>
-            <div id="firebaseConfigured" class="hidden">
-                <p>✓ Firebase設定完了 (Anonymous Auth使用)</p>
-                <button class="btn btn-secondary" data-action="showSecurityRules">📋 セキュリティルールを確認</button>
-                <button class="btn btn-secondary" data-action="clearFirebaseConfig">設定をクリア</button>
+            <div class="firebase-config-body hidden">
+                <div id="firebaseConfigForm">
+                    <input type="text" id="apiKey" placeholder="API Key">
+                    <input type="text" id="projectId" placeholder="Project ID (例: my-game-12345)">
+                    <input type="text" id="databaseURL" placeholder="Database URL (例: https://my-game-12345-default-rtdb.firebaseio.com)">
+                    <button class="btn btn-secondary" style="margin-top:6px;" data-action="showSecurityRules">📋 セットアップ手順を確認</button>
+                    <button class="btn btn-primary" data-action="saveFirebaseConfig">設定を保存</button>
+                </div>
+                <div id="firebaseConfigured" class="hidden">
+                    <p>✓ Firebase設定完了 (Anonymous Auth使用)</p>
+                    <button class="btn btn-secondary" data-action="showSecurityRules">📋 セキュリティルールを確認</button>
+                    <button class="btn btn-secondary" data-action="clearFirebaseConfig">設定をクリア</button>
+                </div>
             </div>
         </div>
         
@@ -195,6 +200,11 @@
     <div class="modal" id="modal" role="dialog" aria-modal="true">
         <div class="modal-content" id="modalContent"></div>
     </div>
+    
+    <!-- プレイヤーリスト オーバーレイ -->
+    <div id="playerListOverlay" class="player-list-overlay hidden" data-action="togglePlayerList"></div>
+    <!-- プレイヤーリスト トグルボタン -->
+    <button id="playerListToggle" class="player-list-toggle hidden" data-action="togglePlayerList" aria-label="プレイヤー一覧">👥</button>
 
     <!-- Firebase SDK (オンラインマルチプレイ用) -->
     <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
