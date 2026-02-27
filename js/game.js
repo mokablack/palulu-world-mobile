@@ -1298,7 +1298,7 @@ API Key / Project ID / Database URL を取得して入力
                 player.position = destPos;
                 renderBoard();
                 updateStatus();
-                promptKoshindoOrEffect(destPos);
+                promptNailThenEffect(destPos);
             });
         }
 
@@ -1419,7 +1419,7 @@ API Key / Project ID / Database URL を取得して入力
                         renderBoard();
                         const trapperName = gameState.players[nailOwner]?.name || '誰か';
                         showModal('info', `${trapperName}が設置した釘にひっかかった！\nここで強制停止！`, () => {
-                            promptKoshindoOrEffect(currentPos);
+                            promptNailThenEffect(currentPos);
                         });
                         return;
                     }
@@ -1428,7 +1428,7 @@ API Key / Project ID / Database URL を取得して入力
                     // 最終マスへの着地
                     setTimeout(() => {
                         if (!checkBlackholeAdjacency(currentPos) && !checkWhiteholeAdjacency(currentPos)) {
-                            promptKoshindoOrEffect(currentPos);
+                            promptNailThenEffect(currentPos);
                         }
                     }, 300);
                 }
@@ -1634,6 +1634,20 @@ API Key / Project ID / Database URL を取得して入力
         }
 
         // ========== コシンドスプレー ==========
+        function promptNailThenEffect(position) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const nailIdx = player.items.indexOf('nail');
+            const tile = gameState.board[position];
+            const canPlace = nailIdx !== -1
+                && tile && tile.id !== 'start' && tile.id !== 'goal'
+                && !(gameState.nailTraps && gameState.nailTraps[position] !== undefined);
+            if (canPlace) {
+                promptNailPlacement(nailIdx, position, () => promptKoshindoOrEffect(position));
+            } else {
+                promptKoshindoOrEffect(position);
+            }
+        }
+
         function promptKoshindoOrEffect(position) {
             const player = gameState.players[gameState.currentPlayerIndex];
             const tile = gameState.board[position];
@@ -2297,18 +2311,6 @@ API Key / Project ID / Database URL を取得して入力
             const currentPlayer = gameState.players[gameState.currentPlayerIndex];
             if (currentPlayer && currentPlayer.immuneTurns > 0) {
                 currentPlayer.immuneTurns--;
-            }
-
-            // 釘の設置確認
-            const nailIdx = currentPlayer ? currentPlayer.items.indexOf('nail') : -1;
-            const pos = currentPlayer ? currentPlayer.position : -1;
-            const tile = pos >= 0 ? gameState.board[pos] : null;
-            const canPlace = nailIdx !== -1
-                && tile && tile.id !== 'start' && tile.id !== 'goal'
-                && !(gameState.nailTraps && gameState.nailTraps[pos] !== undefined);
-            if (canPlace) {
-                promptNailPlacement(nailIdx, pos, doNextTurn);
-                return;
             }
             doNextTurn();
         }
