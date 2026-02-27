@@ -1104,6 +1104,9 @@ API Key / Project ID / Database URL を取得して入力
                 if (id === 'hammer') {
                     return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.position === currentPlayer.position);
                 }
+                if (id === 'snatcher') {
+                    return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.items.length > 0);
+                }
                 return true;
             });
             if (hasPreRollItems) {
@@ -1125,6 +1128,9 @@ API Key / Project ID / Database URL を取得して入力
                     if (!PRE_ROLL_ITEMS.includes(itemId)) return false;
                     if (itemId === 'hammer') {
                         return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.position === player.position);
+                    }
+                    if (itemId === 'snatcher') {
+                        return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.items.length > 0);
                     }
                     return true;
                 });
