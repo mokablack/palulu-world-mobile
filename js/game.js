@@ -23,6 +23,8 @@
             { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', effect: '他プレイヤーのアイテムを1つ奪う' },
             { id: 'nail',       name: '釘',               icon: '📌', effect: 'マスに設置。他プレイヤーが通過時に強制停止させそのマスの効果を受けさせる' },
             { id: 'hammer',     name: 'トンカチ',         icon: '🔨', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
+            { id: 'katashiro',  name: '形代',             icon: '🪆', effect: '他プレイヤーから自分への攻撃アイテム効果を選択したプレイヤーに押し付ける。使用後1〜3マス戻る' },
+            { id: 'gekokujo',   name: '下剋上',           icon: '⚔️', effect: 'アイテムを全て失う代わりにトップのプレイヤーと場所を交換する' },
             { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
         ];
         
@@ -459,11 +461,30 @@
             const saved = localStorage.getItem('enabledItems');
             if (saved) {
                 gameState.enabledItems = JSON.parse(saved);
+                ITEMS.forEach(item => {
+                    if (gameState.enabledItems[item.id] === undefined) {
+                        gameState.enabledItems[item.id] = true;
+                    }
+                });
             } else {
                 ITEMS.forEach(item => {
                     gameState.enabledItems[item.id] = true;
                 });
             }
+        }
+
+        function findTopOpponentIndex(playerIndex) {
+            const current = gameState.players[playerIndex];
+            if (!current) return -1;
+            let topIndex = -1;
+            gameState.players.forEach((p, i) => {
+                if (i === playerIndex) return;
+                if (p.position <= current.position) return;
+                if (topIndex === -1 || p.position > gameState.players[topIndex].position) {
+                    topIndex = i;
+                }
+            });
+            return topIndex;
         }
         
         function saveEnabledItems() {
@@ -1118,7 +1139,16 @@ API Key / Project ID / Database URL を取得して入力
             dice.style.opacity = isMyTurn ? '1' : '0.4';
             dice.style.pointerEvents = isMyTurn ? 'auto' : 'none';
             const diceHint = dice.nextElementSibling;
-            if (diceHint) diceHint.textContent = isMyTurn ? 'タップしてサイコロを振る' : '他のプレイヤーのターンです...';
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            if (diceHint) {
+                if (!isMyTurn) {
+                    diceHint.textContent = '他のプレイヤーのターンです...';
+                } else if (currentPlayer && currentPlayer.skipTurns > 0) {
+                    diceHint.textContent = 'タップしてターン終了';
+                } else {
+                    diceHint.textContent = 'タップしてサイコロを振る';
+                }
+            }
         }
         
         // ========== ゲームプレイ ==========
@@ -1143,7 +1173,7 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             // サイコロ前に使えるアイテムがある場合のみ確認を出す
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha'];
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
             const hasPreRollItems = currentPlayer.items.some(id => {
                 if (!PRE_ROLL_ITEMS.includes(id)) return false;
                 if (id === 'hammer') {
@@ -1151,6 +1181,9 @@ API Key / Project ID / Database URL を取得して入力
                 }
                 if (id === 'snatcher') {
                     return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.items.length > 0);
+                }
+                if (id === 'gekokujo') {
+                    return findTopOpponentIndex(gameState.currentPlayerIndex) !== -1;
                 }
                 return true;
             });
@@ -1166,7 +1199,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
 
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha'];
+            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
             const usableEntries = player.items
                 .map((itemId, index) => ({ itemId, index }))
                 .filter(({ itemId }) => {
@@ -1176,6 +1209,9 @@ API Key / Project ID / Database URL を取得して入力
                     }
                     if (itemId === 'snatcher') {
                         return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.items.length > 0);
+                    }
+                    if (itemId === 'gekokujo') {
+                        return findTopOpponentIndex(gameState.currentPlayerIndex) !== -1;
                     }
                     return true;
                 });
@@ -1271,6 +1307,13 @@ API Key / Project ID / Database URL を取得して入力
                     promptHammerTarget();
                     break;
                 }
+                case 'katashiro':
+                    // 形代は受動アイテム（アイテム選択画面には表示しない）
+                    doRollDice();
+                    break;
+                case 'gekokujo':
+                    useGekokujo();
+                    break;
                 case 'kagemaiha':
                     player.items.splice(itemIndex, 1);
                     useKagemaiha();
@@ -1373,37 +1416,6 @@ API Key / Project ID / Database URL を取得して入力
             let stepsLeft = steps;
             let currentPos = player.position;
 
-            function handleWinPos() {
-                setTimeout(() => {
-                    const winnerIdx = gameState.currentPlayerIndex;
-                    let announced = player;
-                    let babelNote = '';
-                    // 勝者がバベルを持っている場合
-                    if (player.babelTarget !== null && gameState.players[player.babelTarget]) {
-                        const target = gameState.players[player.babelTarget];
-                        babelNote = `\n\n🌀 バベルの効果！\n${player.name}と${target.name}の順位が入れ替わった！`;
-                        announced = target;
-                    }
-                    // 他プレイヤーが勝者をバベルで狙っていた場合
-                    gameState.players.forEach((p, i) => {
-                        if (i !== winnerIdx && p.babelTarget === winnerIdx) {
-                            babelNote = `\n\n🌀 バベルの効果！\n${p.name}が${player.name}と順位を入れ替えた！`;
-                            announced = p;
-                        }
-                    });
-                    // オンラインモード: 勝者を全プレイヤーに通知
-                    if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
-                        syncGameStateToFirebase();
-                        gameState.firebaseRefs.roomRef.child('winner').set({ name: announced.name });
-                        gameState.firebaseRefs.roomRef.child('status').set('finished');
-                    }
-                    if (!gameState.winShown) {
-                        gameState.winShown = true;
-                        showModal('win', buildResultText(announced.name), babelNote);
-                    }
-                }, 500);
-            }
-
             function animateNextStep() {
                 currentPos = Math.min(currentPos + 1, maxPos);
                 stepsLeft--;
@@ -1412,7 +1424,7 @@ API Key / Project ID / Database URL を取得して入力
                 updateStatus();
 
                 if (currentPos >= maxPos) {
-                    handleWinPos();
+                    setTimeout(() => triggerWin(), 500);
                     return;
                 }
 
@@ -1440,6 +1452,33 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             animateNextStep();
+        }
+
+        function triggerWin() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const winnerIdx = gameState.currentPlayerIndex;
+            let announced = player;
+            let babelNote = '';
+            if (player.babelTarget !== null && gameState.players[player.babelTarget]) {
+                const target = gameState.players[player.babelTarget];
+                babelNote = `\n\n🌀 バベルの効果！\n${player.name}と${target.name}の順位が入れ替わった！`;
+                announced = target;
+            }
+            gameState.players.forEach((p, i) => {
+                if (i !== winnerIdx && p.babelTarget === winnerIdx) {
+                    babelNote = `\n\n🌀 バベルの効果！\n${p.name}が${player.name}と順位を入れ替えた！`;
+                    announced = p;
+                }
+            });
+            if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
+                syncGameStateToFirebase();
+                gameState.firebaseRefs.roomRef.child('winner').set({ name: announced.name });
+                gameState.firebaseRefs.roomRef.child('status').set('finished');
+            }
+            if (!gameState.winShown) {
+                gameState.winShown = true;
+                showModal('win', buildResultText(announced.name), babelNote);
+            }
         }
 
         function checkBlackholeAdjacency(position) {
@@ -1629,6 +1668,15 @@ API Key / Project ID / Database URL を取得して入力
                 // 自分に使う: 自分が逆方向に移動
                 showModal('info', `逆さまスプレーを使った！\n${result}マス逆方向に進む！`, () => movePlayer(-result));
             } else {
+                if (targetPlayer.items.includes('katashiro')) {
+                    promptKatashiroChoice({
+                        kind: 'sakasama',
+                        holderIndex: targetPlayerIndex,
+                        attackerIndex: gameState.currentPlayerIndex,
+                        result: result
+                    });
+                    return;
+                }
                 // 他プレイヤーに使う: そのプレイヤーを後退させ、自分は通常移動
                 const newPos = Math.max(0, targetPlayer.position - result);
                 targetPlayer.position = newPos;
@@ -1783,6 +1831,15 @@ API Key / Project ID / Database URL を取得して入力
         }
 
         function snatcherStealItem(targetPlayerIndex, targetItemIndex) {
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            if (targetPlayer && targetPlayer.items.includes('katashiro')) {
+                promptSnatcherKatashiro(targetPlayerIndex, targetItemIndex);
+                return;
+            }
+            performSnatcherSteal(targetPlayerIndex, targetItemIndex);
+        }
+
+        function performSnatcherSteal(targetPlayerIndex, targetItemIndex) {
             const player = gameState.players[gameState.currentPlayerIndex];
             const targetPlayer = gameState.players[targetPlayerIndex];
             const stolenItemId = targetPlayer.items.splice(targetItemIndex, 1)[0];
@@ -1813,10 +1870,254 @@ API Key / Project ID / Database URL を取得して入力
 
         function useHammerOn(targetIndex) {
             const target = gameState.players[targetIndex];
+            if (target.items.includes('katashiro')) {
+                closeModal();
+                promptKatashiroChoice({
+                    kind: 'hammer',
+                    holderIndex: targetIndex,
+                    attackerIndex: gameState.currentPlayerIndex
+                });
+                return;
+            }
             target.skipTurns = 1;
             closeModal();
             updateStatus();
             showModal('info', `「トンカチ」を使った！\n${target.name}が1回休みになった！`, () => doRollDice());
+        }
+
+        function consumeKatashiro(holderIndex) {
+            const holder = gameState.players[holderIndex];
+            if (!holder) return;
+            const katashiroIdx = holder.items.indexOf('katashiro');
+            if (katashiroIdx !== -1) holder.items.splice(katashiroIdx, 1);
+        }
+
+        function applyKatashiroPenalty(holderIndex) {
+            const holder = gameState.players[holderIndex];
+            if (!holder) return 0;
+            const backSteps = Math.floor(Math.random() * 3) + 1;
+            holder.position = Math.max(0, holder.position - backSteps);
+            return backSteps;
+        }
+
+        function promptKatashiroChoice(context) {
+            window.katashiroContext = context;
+            const holder = gameState.players[context.holderIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">形代</div>
+                <div class="modal-text"><strong>${escapeHtml(holder.name)}</strong> は形代を使いますか？</div>
+                <button class="btn btn-primary" style="margin-top:8px;width:100%;" data-action="katashiroUse">使う</button>
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="katashiroSkip">使わない</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function katashiroSkip() {
+            const context = window.katashiroContext;
+            window.katashiroContext = null;
+            closeModal();
+            if (!context) return;
+            if (context.kind === 'sakasama') {
+                const target = gameState.players[context.holderIndex];
+                const newPos = Math.max(0, target.position - context.result);
+                target.position = newPos;
+                renderBoard();
+                updateStatus();
+                if (gameState.playMode === 'online') syncGameStateToFirebase();
+                showModal('info', `逆さまスプレーを使った！\n${target.name}が${context.result}マス逆方向に移動！\n自分は${context.result}マス進む。`, () => movePlayer(context.result));
+                return;
+            }
+            if (context.kind === 'hammer') {
+                const target = gameState.players[context.holderIndex];
+                target.skipTurns = 1;
+                updateStatus();
+                showModal('info', `「トンカチ」を使った！\n${target.name}が1回休みになった！`, () => doRollDice());
+                return;
+            }
+            if (context.kind === 'gekokujo') {
+                applyGekokujoSwap(context.holderIndex, false, context.holderIndex);
+            }
+        }
+
+        function katashiroUse() {
+            const context = window.katashiroContext;
+            if (!context) return;
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            let candidates = [];
+            if (context.kind === 'gekokujo') {
+                candidates = gameState.players
+                    .map((p, i) => ({ p, i }))
+                    .filter(({ i }) => i !== context.holderIndex);
+            } else {
+                candidates = gameState.players
+                    .map((p, i) => ({ p, i }))
+                    .filter(({ i }) => i !== context.holderIndex);
+            }
+            if (candidates.length === 0) {
+                katashiroSkip();
+                return;
+            }
+            const promptText = context.kind === 'gekokujo'
+                ? '下剋上の対象を選んでください'
+                : '効果を押し付ける相手を選んでください';
+            const buttons = candidates.map(({ p, i }) =>
+                `<button class="btn btn-primary" style="margin:4px 0;width:100%;" data-action="katashiroRedirectTarget" data-idx="${i}">${escapeHtml(p.name)}</button>`
+            ).join('');
+            content.innerHTML = `
+                <div class="modal-title">形代</div>
+                <div class="modal-text">${promptText}</div>
+                ${buttons}
+            `;
+            modal.classList.add('show');
+        }
+
+        function katashiroRedirectTarget(targetIndex) {
+            const context = window.katashiroContext;
+            window.katashiroContext = null;
+            closeModal();
+            if (!context) return;
+            consumeKatashiro(context.holderIndex);
+            const holder = gameState.players[context.holderIndex];
+            const backSteps = applyKatashiroPenalty(context.holderIndex);
+            if (context.kind === 'sakasama') {
+                const target = gameState.players[targetIndex];
+                target.position = Math.max(0, target.position - context.result);
+                renderBoard();
+                updateStatus();
+                if (gameState.playMode === 'online') syncGameStateToFirebase();
+                showModal('info', `形代が発動！\n${holder.name}が${target.name}に効果を押し付けた！\n${target.name}が${context.result}マス逆方向に移動。\n${holder.name}は${backSteps}マス戻った。\n自分は${context.result}マス進む。`, () => movePlayer(context.result));
+                return;
+            }
+            if (context.kind === 'hammer') {
+                const target = gameState.players[targetIndex];
+                target.skipTurns = 1;
+                renderBoard();
+                updateStatus();
+                showModal('info', `形代が発動！\n${holder.name}が${target.name}に効果を押し付けた！\n${target.name}が1回休みに。\n${holder.name}は${backSteps}マス戻った。`, () => doRollDice());
+                return;
+            }
+            if (context.kind === 'gekokujo') {
+                applyGekokujoSwap(targetIndex, true, context.holderIndex, backSteps);
+            }
+        }
+
+        function promptSnatcherKatashiro(targetPlayerIndex, targetItemIndex) {
+            window.snatcherKatashiroData = { targetPlayerIndex, targetItemIndex };
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">形代</div>
+                <div class="modal-text"><strong>${escapeHtml(targetPlayer.name)}</strong> は形代を使いますか？</div>
+                <button class="btn btn-primary" style="margin-top:8px;width:100%;" data-action="snatcherKatashiroUse">使う</button>
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="snatcherKatashiroSkip">使わない</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function snatcherKatashiroSkip() {
+            const data = window.snatcherKatashiroData;
+            window.snatcherKatashiroData = null;
+            if (!data) return;
+            performSnatcherSteal(data.targetPlayerIndex, data.targetItemIndex);
+        }
+
+        function snatcherKatashiroUse() {
+            const data = window.snatcherKatashiroData;
+            if (!data) return;
+            const holderIndex = data.targetPlayerIndex;
+            const attackerIndex = gameState.currentPlayerIndex;
+            const candidates = gameState.players
+                .map((p, i) => ({ p, i }))
+                .filter(({ p, i }) => i !== holderIndex && i !== attackerIndex && p.items.length > 0);
+            if (candidates.length === 0) {
+                showModal('info', '形代を使える対象がいないため、通常どおり奪われる。', () => {
+                    snatcherKatashiroSkip();
+                });
+                return;
+            }
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const playersHtml = candidates.map(({ p, i }) =>
+                `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="snatcherKatashiroSelectPlayer" data-idx="${i}">${escapeHtml(p.name)}</button>`
+            ).join('');
+            content.innerHTML = `
+                <div class="modal-title">形代</div>
+                <div class="modal-text">スナッチャーの対象を選んでください</div>
+                ${playersHtml}
+            `;
+            modal.classList.add('show');
+        }
+
+        function snatcherKatashiroSelectPlayer(targetPlayerIndex) {
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const itemsHtml = targetPlayer.items.map((itemId, index) => {
+                return `<button class="btn btn-primary" style="margin:4px;width:100%;" data-action="snatcherKatashiroStealItem" data-target="${targetPlayerIndex}" data-idx="${index}">${itemLabel(itemId)}</button>`;
+            }).join('');
+            content.innerHTML = `
+                <div class="modal-title">形代</div>
+                <div class="modal-text">${escapeHtml(targetPlayer.name)}から奪うアイテムを選んでください</div>
+                ${itemsHtml}
+            `;
+            modal.classList.add('show');
+        }
+
+        function snatcherKatashiroStealItem(targetPlayerIndex, targetItemIndex) {
+            const data = window.snatcherKatashiroData;
+            window.snatcherKatashiroData = null;
+            if (!data) return;
+            const holderIndex = data.targetPlayerIndex;
+            consumeKatashiro(holderIndex);
+            const holder = gameState.players[holderIndex];
+            const backSteps = applyKatashiroPenalty(holderIndex);
+
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const targetPlayer = gameState.players[targetPlayerIndex];
+            const stolenItemId = targetPlayer.items.splice(targetItemIndex, 1)[0];
+            player.items.push(stolenItemId);
+            closeModal();
+            updateStatus();
+            showModal('info', `形代が発動！\n${holder.name}が対象をすり替えた！\n${escapeHtml(targetPlayer.name)}から「${itemLabel(stolenItemId)}」を奪った！\n${holder.name}は${backSteps}マス戻った。`, () => doRollDice());
+        }
+
+        function useGekokujo() {
+            const currentIndex = gameState.currentPlayerIndex;
+            const topIndex = findTopOpponentIndex(currentIndex);
+            if (topIndex === -1) {
+                showModal('info', 'すでにトップのため効果なし', () => doRollDice());
+                return;
+            }
+            const topPlayer = gameState.players[topIndex];
+            if (topPlayer.items.includes('katashiro')) {
+                promptKatashiroChoice({
+                    kind: 'gekokujo',
+                    holderIndex: topIndex,
+                    attackerIndex: currentIndex
+                });
+                return;
+            }
+            applyGekokujoSwap(topIndex, false, topIndex);
+        }
+
+        function applyGekokujoSwap(targetIndex, katashiroUsed, originalTopIndex, katashiroBackSteps) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const target = gameState.players[targetIndex];
+            const pos = player.position;
+            player.position = target.position;
+            target.position = pos;
+            player.items = [];
+            renderBoard();
+            updateStatus();
+            const topName = gameState.players[originalTopIndex]?.name || target.name;
+            const katashiroNote = katashiroUsed
+                ? `\n形代が発動！${topName}が対象をすり替え、${topName}は${katashiroBackSteps}マス戻った。`
+                : '';
+            showModal('info', `下剋上発動！\n${target.name}と場所を交換した！\n${player.name}のアイテムはすべて失われた。${katashiroNote}`, () => doRollDice());
         }
 
         // ========== 釘＋トンカチ コンボ ==========
@@ -1905,12 +2206,18 @@ API Key / Project ID / Database URL を取得して入力
         }
 
         function executeTileEffect(tile) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+
+            // ゴールマスに到達している場合は即ゲーム終了
+            if (player && player.position >= gameState.board.length - 1) {
+                triggerWin();
+                return;
+            }
+
             if (!tile.effect) {
                 nextTurn();
                 return;
             }
-
-            const player = gameState.players[gameState.currentPlayerIndex];
 
             // 免疫チェック: 不利なマス効果を無効化
             if (player && player.immuneTurns > 0) {
@@ -1969,6 +2276,11 @@ API Key / Project ID / Database URL を取得して入力
                             player.position = newPos;
                             renderBoard();
                             updateStatus();
+                            // ゴール到達チェック
+                            if (newPos >= gameState.board.length - 1) {
+                                triggerWin();
+                                return;
+                            }
                             nextTurn();
                         }
                     );
@@ -2099,6 +2411,10 @@ API Key / Project ID / Database URL を取得して入力
                     player.position = newPos;
                     renderBoard();
                     updateStatus();
+                    if (newPos >= gameState.board.length - 1) {
+                        triggerWin();
+                        return;
+                    }
                     nextTurn();
                 };
             } else if (eventEffect.eventEffect === 'storm' && gameState.players.length > 1) {
@@ -2385,6 +2701,32 @@ API Key / Project ID / Database URL を取得して入力
                     inventoryContainer.classList.add('hidden');
                 }
             }
+
+            // 休みターン時のサイコロUI
+            if (gameState.mode === 'play' && !gameState.isRolling) {
+                const diceEl = document.getElementById('dice');
+                const diceHintEl = diceEl ? diceEl.nextElementSibling : null;
+                const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+                if (diceEl && currentPlayer) {
+                    if (currentPlayer.skipTurns > 0) {
+                        diceEl.textContent = '休';
+                        diceEl.style.color = '#ef4444';
+                        diceEl.style.background = '#fee2e2';
+                        if (diceHintEl && gameState.playMode !== 'online') {
+                            diceHintEl.textContent = 'タップしてターン終了';
+                        }
+                    } else {
+                        if (diceEl.textContent === '休') {
+                            diceEl.textContent = '1';
+                        }
+                        diceEl.style.color = '';
+                        diceEl.style.background = '';
+                        if (diceHintEl && gameState.playMode !== 'online') {
+                            diceHintEl.textContent = 'タップしてサイコロを振る';
+                        }
+                    }
+                }
+            }
         }
 
         function renderPlayerListPanel() {
@@ -2631,13 +2973,27 @@ API Key / Project ID / Database URL を取得して入力
             }
             const player = gameState.players[gameState.currentPlayerIndex];
             let newPos = player.position + num;
-            if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
-            player.position = newPos;
-            renderBoard();
-            updateStatus();
             const modal = document.getElementById('modal');
-            modal.classList.remove('show');
-            showModal('info', `${num}マス進んだ！`, () => nextTurn(), '好きなだけ進んでいいよ');
+            const maxPos = gameState.board.length - 1;
+            if (newPos >= maxPos) {
+                // 強欲処理: 名前に(強欲)を付けてスタートへ
+                player.name = player.name + '(強欲)';
+                player.position = 0;
+                renderBoard();
+                updateStatus();
+                modal.classList.remove('show');
+                showModal('info',
+                    `ゴールに到達！しかし欲張りすぎた！\n「${escapeHtml(player.name)}」としてスタートへ戻る！`,
+                    () => nextTurn(),
+                    '好きなだけ進んでいいよ'
+                );
+            } else {
+                player.position = newPos;
+                renderBoard();
+                updateStatus();
+                modal.classList.remove('show');
+                showModal('info', `${num}マス進んだ！`, () => nextTurn(), '好きなだけ進んでいいよ');
+            }
         }
 
         // ========== 今日のラッキーナンバーは？ ==========
@@ -3022,7 +3378,14 @@ const ACTION_HANDLERS = {
     setBabelTarget: (el) => setBabelTarget(Number(el.dataset.idx)),
     snatcherSelectPlayer: (el) => snatcherSelectPlayer(Number(el.dataset.idx)),
     snatcherStealItem: (el) => snatcherStealItem(Number(el.dataset.target), Number(el.dataset.idx)),
+    snatcherKatashiroUse: () => snatcherKatashiroUse(),
+    snatcherKatashiroSkip: () => snatcherKatashiroSkip(),
+    snatcherKatashiroSelectPlayer: (el) => snatcherKatashiroSelectPlayer(Number(el.dataset.idx)),
+    snatcherKatashiroStealItem: (el) => snatcherKatashiroStealItem(Number(el.dataset.target), Number(el.dataset.idx)),
     useHammerOn: (el) => useHammerOn(Number(el.dataset.idx)),
+    katashiroUse: () => katashiroUse(),
+    katashiroSkip: () => katashiroSkip(),
+    katashiroRedirectTarget: (el) => katashiroRedirectTarget(Number(el.dataset.idx)),
     destroyDollOf: (el) => destroyDollOf(Number(el.dataset.idx)),
     confirmNailPlacement: (el) => confirmNailPlacement(Number(el.dataset.nailIdx), Number(el.dataset.pos)),
     merchantPickItem: (el) => merchantPickItem(el.dataset.itemId),
