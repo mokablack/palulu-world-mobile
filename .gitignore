@@ -2,8 +2,6 @@
 text/
 .playwright-mcp/
 .cocoindex_code/
-.serena/
-.claude/
 
 # エディタ関連
 .vscode/
