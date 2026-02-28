@@ -192,7 +192,7 @@ const EVENTS = [
 | `switchMode(mode)` | Navigate between editor / items / events / play screens via `ALL_MODES` table |
 | `initializeBoard()` | Reset board to default |
 | `renderBoard()` | Re-render board grid from `gameState.board`; shows FA icons for item/blackhole/whitehole tiles |
-| `generateRandomStage()` | Generate a random board (~40% normal / ~30% item / ~30% event) |
+| `generateRandomStage()` | Generate a random board (~30% normal / ~30% item / ~40% event) |
 | `saveStage()` / `loadStage()` | Persist/restore board to localStorage |
 | `startSinglePlay()` / `startLocalMulti()` | Transition to active gameplay |
 | `rollDice()` | Animate dice and compute movement |

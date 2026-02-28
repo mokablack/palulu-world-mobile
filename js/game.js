@@ -277,9 +277,9 @@
             
             // 各マスタイプの出現確率を設定
             const tileDistribution = [
-                { type: TILE_TYPES.NORMAL, weight: 40 },      // 40%
+                { type: TILE_TYPES.NORMAL, weight: 30 },      // 30%
                 { type: TILE_TYPES.ITEM, weight: 30 },        // 30%
-                { type: TILE_TYPES.EVENT, weight: 30 }        // 30%
+                { type: TILE_TYPES.EVENT, weight: 40 }        // 40%
             ];
 
             // 重み付きランダム選択のための累積配列を作成
@@ -316,7 +316,7 @@
             }
 
             renderBoard();
-            showModal('info', `ランダムステージを生成しました！\n\nマス構成:\n- 通常: 約40%\n- アイテム: 約30%\n- イベント: 約30%`);
+            showModal('info', `ランダムステージを生成しました！\n\nマス構成:\n- 通常: 約30%\n- アイテム: 約30%\n- イベント: 約40%`);
         }
         
         function renderBoard() {
