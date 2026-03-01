@@ -4,6 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+##基本方針
+調査やデバッグにはサブエージェントを活用してコンテキストを節約する。
+playwritghtを使用したデバック時に作成されたファイルは、C:\Users\mirai\Documents\my_app\palulu-world-mobile\.playwright-mcpにデバックした日時を記載したフォルダを作り、格納するようにする。
+
 ## Project Overview
 
 **ぱるるワールドMobile** is a Japanese mobile-first browser-based board game (双六). Modes:
