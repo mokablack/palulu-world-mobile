@@ -25,7 +25,8 @@
             { id: 'hammer',     name: 'トンカチ',         icon: '🔨', effect: '同じマスにいる他プレイヤー1人を1回休みにする' },
             { id: 'katashiro',  name: '形代',             icon: '🪆', effect: '他プレイヤーから自分への攻撃アイテム効果を選択したプレイヤーに押し付ける。使用後1〜3マス戻る' },
             { id: 'gekokujo',   name: '下剋上',           icon: '⚔️', effect: 'アイテムを全て失う代わりにトップのプレイヤーと場所を交換する' },
-            { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' }
+            { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' },
+            { id: 'morohajoken', name: '諸刃の剣',         icon: '🗡️', effect: '100面ダイスを振る。1が出ればゴール1マス前へワープ、それ以外はスタートへ戻る。同マスの他プレイヤーにも使用可能' }
         ];
         
         // アイテム表示ラベル（アイコン + 名前）
@@ -1222,7 +1223,7 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             // サイコロ前に使えるアイテムがある場合のみ確認を出す
-            const PRE_ROLL_ITEMS = ['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
+            const PRE_ROLL_ITEMS = ['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha', 'morohajoken'];
             const hasPreRollItems = currentPlayer.items.some(id => {
                 if (!PRE_ROLL_ITEMS.includes(id)) return false;
                 if (id === 'hammer') {
@@ -1248,7 +1249,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
 
-            const PRE_ROLL_ITEMS = ['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
+            const PRE_ROLL_ITEMS = ['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha', 'morohajoken'];
             const usableEntries = player.items
                 .map((itemId, index) => ({ itemId, index }))
                 .filter(({ itemId }) => {
@@ -1362,6 +1363,9 @@ API Key / Project ID / Database URL を取得して入力
                 case 'kagemaiha':
                     useKagemaiha();
                     break;
+                case 'morohajoken':
+                    useMorohajoken();
+                    break;
                 default:
                     doRollDice();
             }
@@ -1392,6 +1396,55 @@ API Key / Project ID / Database URL を取得して入力
                 updateStatus();
                 promptNailThenEffect(destPos);
             });
+        }
+
+        function useMorohajoken() {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const samePosOpponents = gameState.players
+                .map((p, i) => ({ p, i }))
+                .filter(({ p, i }) => i !== gameState.currentPlayerIndex && p.position === player.position);
+
+            if (samePosOpponents.length === 0) {
+                executeMorohajoken(gameState.currentPlayerIndex);
+            } else {
+                const modal = document.getElementById('modal');
+                const content = document.getElementById('modalContent');
+                const opponentButtons = samePosOpponents.map(({ p, i }) =>
+                    `<button class="btn btn-danger" style="margin:4px;width:100%;" data-action="morohajokenTarget" data-idx="${i}">${escapeHtml(p.name)}に使う</button>`
+                ).join('');
+                content.innerHTML = `
+                    <div class="modal-title">🗡️ 諸刃の剣 — 対象を選んでください</div>
+                    <button class="btn btn-primary" style="margin:4px;width:100%;" data-action="morohajokenTarget" data-idx="${gameState.currentPlayerIndex}">自分に使う</button>
+                    ${opponentButtons}
+                `;
+                modal.classList.add('show');
+            }
+        }
+
+        function morohajokenTarget(targetIndex) {
+            closeModal();
+            executeMorohajoken(targetIndex);
+        }
+
+        function executeMorohajoken(targetIndex) {
+            const target = gameState.players[targetIndex];
+            const maxPos = gameState.board.length - 1;
+            const roll = Math.floor(Math.random() * 100) + 1;
+            const isMe = targetIndex === gameState.currentPlayerIndex;
+            const targetName = isMe ? '自分' : escapeHtml(target.name);
+
+            if (roll === 1) {
+                const destPos = Math.max(0, maxPos - 1);
+                target.position = destPos;
+                renderBoard();
+                updateStatus();
+                showModal('info', `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}！\n🎉 大成功！\n${targetName}がゴール1マス前へワープした！`, () => doRollDice());
+            } else {
+                target.position = 0;
+                renderBoard();
+                updateStatus();
+                showModal('info', `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}…\n💀 失敗！\n${targetName}がスタートに戻った！`, () => doRollDice());
+            }
         }
 
         function doRollDice() {
@@ -3491,6 +3544,7 @@ const ACTION_HANDLERS = {
     selfAppealVoteNo: () => handleSelfAppealVote(false),
     freeMoveSubmit: () => freeMoveSubmit(),
     luckyNumberSubmit: () => luckyNumberSubmit(),
+    morohajokenTarget: (el) => morohajokenTarget(Number(el.dataset.idx)),
 };
 
 document.addEventListener('click', e => {
