@@ -39,7 +39,10 @@
       "Bash(git:*)",
       "mcp__context7__resolve-library-id",
       "Bash(# Font Awesome 6の最新バージョンをcdnjsで確認\ncurl -s --max-time 15 \"https://api.cdnjs.com/libraries/font-awesome?fields=version,versions\" 2>/dev/null | python3 -c \"\nimport sys, json\ntry:\n    d = json.load\\(sys.stdin\\)\n    print\\('Font Awesome current version on cdnjs:', d.get\\('version'\\)\\)\n    versions = d.get\\('versions', []\\)\n    print\\('Recent versions \\(last 10\\):', versions[:10] if versions else 'N/A'\\)\nexcept Exception as e:\n    print\\('Error:', e\\)\n\" 2>/dev/null)",
-      "Bash(# Check if Firebase v8 has any known security advisories - check npm audit\ncurl -s --max-time 15 \"https://registry.npmjs.org/firebase/8.10.1\" 2>/dev/null | python3 -c \"\nimport sys, json\ntry:\n    d = json.load\\(sys.stdin\\)\n    print\\('Firebase 8.10.1:'\\)\n    print\\('  name:', d.get\\('name'\\)\\)\n    print\\('  version:', d.get\\('version'\\)\\)\n    print\\('  deprecated:', d.get\\('deprecated', 'NOT deprecated'\\)\\)\n    print\\('  engines:', d.get\\('engines', 'N/A'\\)\\)\nexcept Exception as e:\n    print\\('Error:', e\\)\n\" 2>/dev/null)"
+      "Bash(# Check if Firebase v8 has any known security advisories - check npm audit\ncurl -s --max-time 15 \"https://registry.npmjs.org/firebase/8.10.1\" 2>/dev/null | python3 -c \"\nimport sys, json\ntry:\n    d = json.load\\(sys.stdin\\)\n    print\\('Firebase 8.10.1:'\\)\n    print\\('  name:', d.get\\('name'\\)\\)\n    print\\('  version:', d.get\\('version'\\)\\)\n    print\\('  deprecated:', d.get\\('deprecated', 'NOT deprecated'\\)\\)\n    print\\('  engines:', d.get\\('engines', 'N/A'\\)\\)\nexcept Exception as e:\n    print\\('Error:', e\\)\n\" 2>/dev/null)",
+      "Bash(claude mcp:*)",
+      "Bash(uvx --from \"git+https://github.com/oraios/serena\" serena start-mcp-server --help)",
+      "Bash(uvx --from \"git+https://github.com/oraios/serena\" serena context list)"
     ]
   }
 }

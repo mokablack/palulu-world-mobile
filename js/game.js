@@ -1682,7 +1682,7 @@ API Key / Project ID / Database URL を取得して入力
                 targetPlayer.position = newPos;
                 renderBoard();
                 if (gameState.playMode === 'online') syncGameStateToFirebase();
-                showModal('info', `逆さまスプレーを使った！\n${targetPlayer.name}が${result}マス逆方向に移動！\n自分は${result}マス進む。`, () => movePlayer(result));
+                showModal('info', `逆さまスプレーを使った！\n${targetPlayer.name}が${result}マス逆方向に移動！`, () => nextTurn());
             }
         }
 
@@ -1926,7 +1926,7 @@ API Key / Project ID / Database URL を取得して入力
                 renderBoard();
                 updateStatus();
                 if (gameState.playMode === 'online') syncGameStateToFirebase();
-                showModal('info', `逆さまスプレーを使った！\n${target.name}が${context.result}マス逆方向に移動！\n自分は${context.result}マス進む。`, () => movePlayer(context.result));
+                showModal('info', `逆さまスプレーを使った！\n${target.name}が${context.result}マス逆方向に移動！`, () => nextTurn());
                 return;
             }
             if (context.kind === 'hammer') {
@@ -1988,7 +1988,7 @@ API Key / Project ID / Database URL を取得して入力
                 renderBoard();
                 updateStatus();
                 if (gameState.playMode === 'online') syncGameStateToFirebase();
-                showModal('info', `形代が発動！\n${holder.name}が${target.name}に効果を押し付けた！\n${target.name}が${context.result}マス逆方向に移動。\n${holder.name}は${backSteps}マス戻った。\n自分は${context.result}マス進む。`, () => movePlayer(context.result));
+                showModal('info', `形代が発動！\n${holder.name}が${target.name}に効果を押し付けた！\n${target.name}が${context.result}マス逆方向に移動。\n${holder.name}は${backSteps}マス戻った。`, () => nextTurn());
                 return;
             }
             if (context.kind === 'hammer') {
@@ -2415,7 +2415,7 @@ API Key / Project ID / Database URL を取得して入力
                         triggerWin();
                         return;
                     }
-                    nextTurn();
+                    executeTileEffect(gameState.board[newPos]);
                 };
             } else if (eventEffect.eventEffect === 'storm' && gameState.players.length > 1) {
                 callback = () => {
