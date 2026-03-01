@@ -4,8 +4,123 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ---
 
+\## ワークフロー設計
+
+
+
+\### 1. Planモードを基本とする
+
+\- 3ステップ以上 or アーキテクチャに関わるタスクは必ずPlanモードで開始する
+
+\- 途中でうまくいかなくなったら、無理に進めずすぐに立ち止まって再計画する
+
+\- 構築だけでなく、検証ステップにもPlanモードを使う
+
+\- 曖昧さを減らすため、実装前に詳細な仕様を書く
+
+
+
+\### 2. サブエージェント戦略
+
+\- メインのコンテキストウィンドウをクリーンに保つためにサブエージェントを積極的に活用する
+
+\- リサーチ・調査・並列分析はサブエージェントに任せる
+
+\- 複雑な問題には、サブエージェントを使ってより多くの計算リソースを投入する
+
+\- 集中して実行するために、サブエージェント1つにつき1タスクを割り当てる
+
+
+
+\### 3. 自己改善ループ
+
+\- ユーザーから修正を受けたら必ず `tasks/lessons.md` にそのパターンを記録する
+
+\- 同じミスを繰り返さないように、自分へのルールを書く
+
+\- ミス率が下がるまで、ルールを徹底的に改善し続ける
+
+\- セッション開始時に、そのプロジェクトに関連するlessonsをレビューする
+
+
+
+\### 4. 完了前に必ず検証する
+
+\- 動作を証明できるまで、タスクを完了とマークしない
+
+\- 必要に応じてmainブランチと自分の変更の差分を確認する
+
+\- 「スタッフエンジニアはこれを承認するか？」と自問する
+
+\- テストを実行し、ログを確認し、正しく動作することを示す
+
+
+
+\### 5. エレガントさを追求する（バランスよく）
+
+\- 重要な変更をする前に「もっとエレガントな方法はないか？」と一度立ち止まる
+
+\- ハック的な修正に感じたら「今知っていることをすべて踏まえて、エレガントな解決策を実装する」
+
+\- シンプルで明白な修正にはこのプロセスをスキップする（過剰設計しない）
+
+\- 提示する前に自分の作業に自問自答する
+
+
+
+\### 6. 自律的なバグ修正
+
+\- バグレポートを受けたら、手取り足取り教えてもらわずにそのまま修正する
+
+\- ログ・エラー・失敗しているテストを見て、自分で解決する
+
+\- ユーザーのコンテキスト切り替えをゼロにする
+
+\- 言われなくても、失敗しているCIテストを修正しに行く
+
+
+
+---
+
+
+
+\## タスク管理
+
+
+
+1\. \*\*まず計画を立てる\*\*：チェック可能な項目として `tasks/todo.md` に計画を書く
+
+2\. \*\*計画を確認する\*\*：実装を開始する前に確認する
+
+3\. \*\*進捗を記録する\*\*：完了した項目を随時マークしていく
+
+4\. \*\*変更を説明する\*\*：各ステップで高レベルのサマリーを提供する
+
+5\. \*\*結果をドキュメント化する\*\*：`tasks/todo.md` にレビューセクションを追加する
+
+6\. \*\*学びを記録する\*\*：修正を受けた後に `tasks/lessons.md` を更新する
+
+
+
+---
+
+
+
+\## コア原則
+
+
+
+\- \*\*シンプル第一\*\*：すべての変更をできる限りシンプルにする。影響するコードを最小限にする。
+
+\- \*\*手を抜かない\*\*：根本原因を見つける。一時的な修正は避ける。シニアエンジニアの水準を保つ。
+
+\- \*\*影響を最小化する\*\*：変更は必要な箇所のみにとどめる。バグを新たに引き込まない。
+
+
+
+
+
 ## 基本方針
-調査やデバッグにはサブエージェントを活用してコンテキストを節約する。
 playwritghtを使用したデバック時に作成されたファイルは、C:\Users\mirai\Documents\my_app\palulu-world-mobile\.playwright-mcpにデバックした日時を記載したフォルダを作り、格納するようにする。
 
 ## Project Overview
@@ -23,19 +138,24 @@ No build tooling. Open `index.html` directly in any browser.
 
 ## Architecture
 
-**No build tooling** — open `index.html` directly in any browser. No npm, no build step.
+**No build tooling** — open `index.html` directly in any browser. No npm, no build step, no tests.
+
+**GitHub Pages:** https://mokablack.github.io/palulu-world-mobile/
 
 ### File Structure
 
 ```
 index.html        (~216 lines) — HTML skeleton only
 css/
-  styles.css      (~765 lines) — all styles
+  styles.css      (~761 lines) — all styles
 js/
-  game.js         (~3434 lines) — all game logic
+  game.js         (~3827 lines) — all game logic
+tasks/
+  todo.md         — タスク一覧（作業ごとに作成）
+  lessons.md      — 修正パターンの記録（自己改善ループ用）
 ```
 
-`index.html` loads Font Awesome 6 CDN, `css/styles.css`, Firebase SDK v8 CDN (3 scripts), then `js/game.js`.
+`index.html` loads Font Awesome 6.7.2 CDN, `css/styles.css`, Firebase SDK v11 Compat CDN (3 scripts: `firebase-app-compat`, `firebase-auth-compat`, `firebase-database-compat`), then `js/game.js`.
 
 ### `js/game.js` Section Order (delimited by `// ========== ... ==========`)
 
@@ -54,7 +174,7 @@ js/
 13. オンラインマルチ (Firebase実装)
 14. ゲームプレイ — dice, movement, tile effects
 15. アイテム取得共通処理
-16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 形代＋下剋上ハンドラ / 釘＋トンカチコンボ / 釘の設置 (per-item handlers)
+16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 形代＋下剋上ハンドラ / 釘＋トンカチコンボ / 釘の設置 / 諸刃の剣 (`morohajokenTarget()`) (per-item handlers)
 17. 怪しい商人UI — `showMerchantDialog()` and related
 18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()`
 19. 自分をアピールして！ / 好きなだけ進んでいいよ / 今日のラッキーナンバーは？ / 怒らせたら10進む (custom event UIs)
@@ -142,23 +262,24 @@ let gameState = {
 const TILE_TYPES = { NORMAL, FORWARD, BACKWARD, ITEM, EVENT, REST, START, GOAL };
 // REST: { id: 'rest', name: '休み', color: 'tile-rest', effect: { type: 'rest', value: 1 } }
 
-// Items (15 total) — each has id, name, icon (emoji), effect (string)
+// Items (16 total) — each has id, name, icon (emoji), effect (string)
 const ITEMS = [
-    { id: 'boots',      name: '魔法の靴',         icon: '👟', ... },
-    { id: 'shield',     name: '盾',               icon: '🛡️', ... },  // reactive: prompted on backward tile
-    { id: 'binoculars', name: '双眼鏡',           icon: '🔭', ... },
-    { id: 'timestop',   name: 'タイムストップ',   icon: '⏸️', ... },
-    { id: 'koshindo',   name: 'コシンドスプレー', icon: '💨', ... },
-    { id: 'sakasama',   name: '逆さまスプレー',   icon: '🔄', ... },
-    { id: 'star',       name: 'スター',           icon: '⭐', ... },
-    { id: 'curseddoll', name: '呪われた人形',     icon: '🧸', ... },
-    { id: 'babel',      name: 'バベル',           icon: '🌀', ... },  // displayed as star externally
-    { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', ... },  // 他プレイヤーのアイテムを1つ奪う
-    { id: 'nail',       name: '釘',               icon: '📌', ... },
-    { id: 'hammer',     name: 'トンカチ',         icon: '🔨', ... },
-    { id: 'katashiro',  name: '形代',             icon: '🪆', ... },  // 受動アイテム: 攻撃効果を第三者に転嫁
-    { id: 'gekokujo',   name: '下剋上',           icon: '⚔️', ... },  // トップと位置交換（全アイテム失う）
-    { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', ... },
+    { id: 'boots',       name: '魔法の靴',         icon: '👟', ... },
+    { id: 'shield',      name: '盾',               icon: '🛡️', ... },  // reactive: prompted on backward tile
+    { id: 'binoculars',  name: '双眼鏡',           icon: '🔭', ... },
+    { id: 'timestop',    name: 'タイムストップ',   icon: '⏸️', ... },
+    { id: 'koshindo',    name: 'コシンドスプレー', icon: '💨', ... },
+    { id: 'sakasama',    name: '逆さまスプレー',   icon: '🔄', ... },
+    { id: 'star',        name: 'スター',           icon: '⭐', ... },
+    { id: 'curseddoll',  name: '呪われた人形',     icon: '🧸', ... },
+    { id: 'babel',       name: 'バベル',           icon: '🌀', ... },  // displayed as star externally
+    { id: 'snatcher',    name: 'スナッチャー',     icon: '🎣', ... },  // 他プレイヤーのアイテムを1つ奪う
+    { id: 'nail',        name: '釘',               icon: '📌', ... },
+    { id: 'hammer',      name: 'トンカチ',         icon: '🔨', ... },
+    { id: 'katashiro',   name: '形代',             icon: '🪆', ... },  // 受動アイテム: 攻撃効果を第三者に転嫁
+    { id: 'gekokujo',    name: '下剋上',           icon: '⚔️', ... },  // トップと位置交換（全アイテム失う）
+    { id: 'kagemaiha',   name: '影舞葉',           icon: '🍃', ... },
+    { id: 'morohajoken', name: '諸刃の剣',         icon: '🗡️', ... },  // 100面ダイス: 1→ゴール1マス前, 他→スタートへ; 同マスの他PLにも使用可
 ];
 
 // Events (19 total)
@@ -225,7 +346,7 @@ const EVENTS = [
 ### Item usage timing
 
 **Pre-roll** (usable before dice — `PRE_ROLL_ITEMS`):
-`['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha']`
+`['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha', 'morohajoken']`
 
 **Post-roll** (triggered after landing): `koshindo`, `sakasama`
 
@@ -234,7 +355,7 @@ const EVENTS = [
 
 **Passive** (no active use): `katashiro` — intercepts incoming attack items; `curseddoll`
 
-> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in **two separate places** inside `rollDice()` — once for the `hasPreRollItems` check and once inside `promptItemUsage()`. Update **both** when modifying this list. Items with a precondition (e.g., `hammer` requires a co-located opponent, `snatcher` requires a target with items, `gekokujo` requires a non-self top player) need the precondition check added in both locations.
+> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in **two separate places** inside `rollDice()` — once for the `hasPreRollItems` check and once inside `promptItemUsage()`. Update **both** when modifying this list. Items with a precondition (e.g., `hammer` requires a co-located opponent, `snatcher` requires a target with items, `gekokujo` requires a non-self top player, `morohajoken` requires at least 1 player in game) need the precondition check added in both locations.
 
 ### babel display rule
 
@@ -291,10 +412,9 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 ### `data-action` / `closeModal*` bridge pattern
 
-`ACTION_HANDLERS` (global scope, L2963) dispatches all `data-action` button clicks. Functions called from `data-action` must be in global scope. Multi-step dialogs that need a callback after modal close use one of the pre-defined bridge functions:
+`ACTION_HANDLERS` (global scope, ~L3739) dispatches all `data-action` button clicks. Functions called from `data-action` must be in global scope. Multi-step dialogs that need a callback after modal close use one of the pre-defined bridge functions (defined just before `ACTION_HANDLERS`):
 
 ```javascript
-// L2964-2969 (global scope, outside main function body)
 closeModalThenRollDice()      // closeModal() + doRollDice()
 closeModalThenNextTurn()      // closeModal() + nextTurn()
 closeModalThenSwitchEditor()  // closeModal() + switchMode('editor')
@@ -321,10 +441,10 @@ Multi-step dialogs (merchant, nail, self_appeal, etc.) pass state between `data-
 
 ## Firebase / Online Multiplayer
 
-Firebase SDK v8 is loaded via CDN in `index.html` (3 `<script>` tags before `js/game.js`). Room creation, game sync, waiting room player list, and host-triggered game start are all implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
+Firebase SDK v11 Compat is loaded via CDN in `index.html` (3 `<script>` tags before `js/game.js`). "Compat" means v8-style API surface on top of v9+ internals. Room creation, game sync, waiting room player list, and host-triggered game start are all implemented. Key refs: `roomRef`, `playerRef` inside `gameState.firebaseRefs`.
 
 Remaining TODO (marked `// TODO` in code):
-- Firebase v8 → v9 Modular migration (CDN v8 is legacy; deferred)
+- Firebase Compat → v9 Modular migration (deferred)
 
 ---
 
@@ -338,4 +458,4 @@ Remaining TODO (marked `// TODO` in code):
 
 ## Long-term TODOs
 
-- [ ] **Firebase v8 → v9 Modular** — CDN v8 is legacy; migration deferred
+- [ ] **Firebase Compat → v9 Modular** — CDN v11 Compat is functional but not tree-shakeable; migration deferred

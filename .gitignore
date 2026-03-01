@@ -2,6 +2,7 @@
 text/
 .playwright-mcp/
 .cocoindex_code/
+tasks/
 
 # エディタ関連
 .vscode/
