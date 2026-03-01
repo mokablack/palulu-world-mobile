@@ -872,9 +872,8 @@
 
                 const myPlayerRef = roomRef.child('players/' + gameState.playerId);
                 await myPlayerRef.set({ name: hostName, connected: true });
-                // 切断時: 自分のプレイヤーエントリを削除、ルームを abandoned に
+                // 切断時: 自分のプレイヤーエントリのみ削除（ルームは維持）
                 myPlayerRef.onDisconnect().remove();
-                roomRef.onDisconnect().update({ status: 'abandoned' });
                 gameState.firebaseRefs.playerRef = myPlayerRef;
             } catch (e) {
                 showModal('info', 'ルーム作成エラー: ' + e.message + '\n\n「📋 セットアップ手順を確認」ボタンで\nDatabase RulesとAnonymous認証の設定を確認してください。');
@@ -1016,6 +1015,12 @@
                     return;
                 }
 
+                // プレイ順をランダムにシャッフル
+                for (let i = playersForGame.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [playersForGame[i], playersForGame[j]] = [playersForGame[j], playersForGame[i]];
+                }
+
                 const initialSnap = { players: playersForGame, currentPlayerIndex: 0 };
                 roomRef.update({
                     status: 'started',
@@ -1033,7 +1038,12 @@
                 roomRef.child('players').off();
                 roomRef.child('status').off();
                 roomRef.child('gameSnapshot').off();
+                roomRef.child('uiAction').off();
                 if (gameState.firebaseRefs.playerRef) gameState.firebaseRefs.playerRef.remove();
+                // ホストが明示的に退出した場合のみルームを abandoned にする
+                if (gameState.isHost) {
+                    roomRef.update({ status: 'abandoned' });
+                }
             }
             gameState.roomId = null;
             gameState.isHost = false;
@@ -1172,6 +1182,14 @@ API Key / Project ID / Database URL を取得して入力
                     });
                 }
             });
+
+            // UI操作の配送: 特定プレイヤーのデバイスにダイアログを表示する
+            roomRef.child('uiAction').on('value', snap => {
+                if (!snap.exists() || gameState.mode !== 'play') return;
+                const action = snap.val();
+                if (!action) return;
+                handleOnlineUiAction(action);
+            });
         }
 
         function syncGameStateToFirebase() {
@@ -1211,6 +1229,10 @@ API Key / Project ID / Database URL を取得して入力
                 if (!isMyTurn) return;
             }
 
+            execRollDice();
+        }
+
+        function execRollDice() {
             const currentPlayer = gameState.players[gameState.currentPlayerIndex];
             if (currentPlayer.skipTurns > 0) {
                 currentPlayer.skipTurns--;
@@ -2781,10 +2803,17 @@ API Key / Project ID / Database URL を取得して入力
             if (gameState.playMode === 'online') {
                 syncGameStateToFirebase();
                 updateDiceInteractivity();
-            }
-
-            // マルチプレイ: ターン開始をダイアログで通知
-            if (gameState.playMode !== 'single') {
+                // 次のプレイヤーのデバイスにターン通知を送信
+                const nextPlayer = gameState.players[gameState.currentPlayerIndex];
+                if (nextPlayer && gameState.firebaseRefs.roomRef) {
+                    gameState.firebaseRefs.roomRef.child('uiAction').set({
+                        type: 'turn_notify',
+                        nextPlayerId: nextPlayer.id,
+                        playerName: nextPlayer.name
+                    });
+                }
+            } else if (gameState.playMode === 'local') {
+                // ローカル: 次のプレイヤーに即時通知
                 const nextPlayer = gameState.players[gameState.currentPlayerIndex];
                 if (nextPlayer) {
                     showModal('info', '', undefined, `${nextPlayer.name}のターン！`);
@@ -3084,7 +3113,11 @@ API Key / Project ID / Database URL を取得して入力
                 if (timeLeft <= 0) {
                     clearInterval(window.selfAppealTimerId);
                     window.selfAppealTimerId = null;
-                    startSelfAppealVoting(0, []);
+                    if (gameState.playMode === 'online') {
+                        startOnlineSelfAppealVoting(0, []);
+                    } else {
+                        startSelfAppealVoting(0, []);
+                    }
                 }
             }, 1000);
         }
@@ -3217,7 +3250,29 @@ API Key / Project ID / Database URL を取得して入力
             window.selfAppealVoterArrayIndex = voterArrayIndex;
             window.selfAppealCurrentVotes = votes;
 
+            // 審査員へのデバイス手渡し中間画面
             const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">📱 デバイスを渡してください</div>
+                <div class="modal-text">
+                    審査員 <strong>${escapeHtml(voter.name)}</strong> さんに<br>
+                    デバイスを渡してください。<br>
+                    <small style="color:#999;">（${escapeHtml(currentPlayer.name)}さんは見ないでください）</small>
+                </div>
+                <button class="btn btn-primary" style="margin-top:16px;width:100%;" data-action="selfAppealShowVoteDialog">
+                    ${escapeHtml(voter.name)}です、受け取りました
+                </button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function selfAppealShowVoteDialog() {
+            const voterArrayIndex = window.selfAppealVoterArrayIndex;
+            const voterIdx = window.selfAppealVoters[voterArrayIndex];
+            const voter = gameState.players[voterIdx];
+            const currentPlayer = gameState.players[window.selfAppealCurrentPlayer];
+
             const content = document.getElementById('modalContent');
             content.innerHTML = `
                 <div class="modal-title">📋 採用審査</div>
@@ -3230,12 +3285,15 @@ API Key / Project ID / Database URL を取得して入力
                     <button class="btn btn-secondary" style="font-size:18px;padding:12px 24px;" data-action="selfAppealVoteNo">❌ 不採用</button>
                 </div>
             `;
-            modal.classList.add('show');
         }
 
         function handleSelfAppealVote(isYes) {
             const newVotes = [...window.selfAppealCurrentVotes, isYes];
-            startSelfAppealVoting(window.selfAppealVoterArrayIndex + 1, newVotes);
+            if (gameState.playMode === 'online') {
+                startOnlineSelfAppealVoting(window.selfAppealVoterArrayIndex + 1, newVotes);
+            } else {
+                startSelfAppealVoting(window.selfAppealVoterArrayIndex + 1, newVotes);
+            }
         }
 
         function finishSelfAppealVoting(votes) {
@@ -3246,13 +3304,16 @@ API Key / Project ID / Database URL を取得して入力
             // 既存の採用/不採用タグを除去
             currentPlayer.name = currentPlayer.name.replace(/\((採用|不採用)\)$/, '');
 
+            const maxPos = gameState.board.length - 1;
             let tag, resultText;
             if (yesCount > noCount) {
                 tag = '(採用)';
-                resultText = `採用${yesCount}票 vs 不採用${noCount}票\n${currentPlayer.name} は採用された！`;
+                currentPlayer.position = Math.min(maxPos, currentPlayer.position + yesCount);
+                resultText = `採用${yesCount}票 vs 不採用${noCount}票\n${currentPlayer.name} は採用された！\n${yesCount}マス進む！`;
             } else {
                 tag = '(不採用)';
-                resultText = `採用${yesCount}票 vs 不採用${noCount}票\n${currentPlayer.name} は不採用になった...`;
+                currentPlayer.position = Math.max(0, currentPlayer.position - noCount);
+                resultText = `採用${yesCount}票 vs 不採用${noCount}票\n${currentPlayer.name} は不採用になった...\n${noCount}マス戻る...`;
             }
             currentPlayer.name += tag;
 
@@ -3312,7 +3373,20 @@ API Key / Project ID / Database URL を取得して入力
                     if (el) el.className = 'roulette-item roulette-winner';
                     const resultDiv = document.getElementById('angryRouletteResult');
                     if (resultDiv) resultDiv.textContent = `${gameState.players[selectedIndex].name} に決定！`;
-                    setTimeout(() => showAngryDialog(selectedIndex), 1600);
+                    setTimeout(() => {
+                        if (gameState.playMode === 'online') {
+                            const selectedPlayer = gameState.players[selectedIndex];
+                            closeModal();
+                            gameState.firebaseRefs.roomRef.child('uiAction').set({
+                                type: 'angry_judgment',
+                                targetPlayerId: selectedPlayer.id,
+                                selectedPlayerIdx: selectedIndex,
+                                tilePlayerIdx: gameState.currentPlayerIndex
+                            });
+                        } else {
+                            showAngryPassDevice(selectedIndex);
+                        }
+                    }, 1600);
                     return;
                 }
                 highlightItem(frames[frameIdx]);
@@ -3322,6 +3396,117 @@ API Key / Project ID / Database URL を取得して入力
                 setTimeout(animate, delay);
             };
             setTimeout(animate, 200);
+        }
+
+        // ========== オンライン UI アクション処理 ==========
+
+        function startOnlineSelfAppealVoting(voterArrayIndex, votes) {
+            const voterIndices = window.selfAppealVoters;
+            if (voterArrayIndex >= voterIndices.length) {
+                // 全員投票完了: タイルプレイヤーのデバイスに通知
+                gameState.firebaseRefs.roomRef.child('uiAction').set({
+                    type: 'self_appeal_finish',
+                    appealPlayerIdx: window.selfAppealCurrentPlayer,
+                    votes: votes
+                });
+                return;
+            }
+            const voterIdx = voterIndices[voterArrayIndex];
+            const voter = gameState.players[voterIdx];
+            gameState.firebaseRefs.roomRef.child('uiAction').set({
+                type: 'self_appeal_vote',
+                voterPlayerId: voter.id,
+                voterArrayIndex: voterArrayIndex,
+                votes: votes,
+                appealPlayerIdx: window.selfAppealCurrentPlayer
+            });
+        }
+
+        function handleOnlineUiAction(action) {
+            const roomRef = gameState.firebaseRefs.roomRef;
+            switch (action.type) {
+                case 'turn_notify':
+                    if (action.nextPlayerId === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        showModal('info', '', undefined, `${escapeHtml(action.playerName)}のターン！`);
+                    }
+                    break;
+                case 'self_appeal_vote':
+                    if (action.voterPlayerId === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        window.selfAppealCurrentPlayer = action.appealPlayerIdx;
+                        window.selfAppealVoters = gameState.players.map((_, i) => i).filter(i => i !== action.appealPlayerIdx);
+                        window.selfAppealVoterArrayIndex = action.voterArrayIndex;
+                        window.selfAppealCurrentVotes = action.votes;
+                        const voter = gameState.players.find(p => p.id === gameState.playerId);
+                        const appealPlayer = gameState.players[action.appealPlayerIdx];
+                        const modal = document.getElementById('modal');
+                        const content = document.getElementById('modalContent');
+                        content.innerHTML = `
+                            <div class="modal-title">📋 採用審査</div>
+                            <div class="modal-text">
+                                <strong>${escapeHtml(voter?.name || '')}</strong> さん、<br>
+                                ${escapeHtml(appealPlayer?.name || '')} を採用しますか？
+                            </div>
+                            <div style="display:flex;gap:12px;justify-content:center;margin-top:16px;">
+                                <button class="btn btn-primary" style="font-size:18px;padding:12px 24px;" data-action="selfAppealVoteYes">✅ 採用</button>
+                                <button class="btn btn-secondary" style="font-size:18px;padding:12px 24px;" data-action="selfAppealVoteNo">❌ 不採用</button>
+                            </div>
+                        `;
+                        modal.classList.add('show');
+                    }
+                    break;
+                case 'self_appeal_finish':
+                    if (gameState.players[action.appealPlayerIdx]?.id === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        window.selfAppealCurrentPlayer = action.appealPlayerIdx;
+                        finishSelfAppealVoting(action.votes);
+                    }
+                    break;
+                case 'angry_judgment':
+                    if (action.targetPlayerId === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        window.angryOnlineTilePlayerIdx = action.tilePlayerIdx;
+                        showAngryDialog(action.selectedPlayerIdx);
+                    }
+                    break;
+                case 'angry_result':
+                    if (gameState.players[action.tilePlayerIdx]?.id === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        const tilePlayer = gameState.players[action.tilePlayerIdx];
+                        if (action.result === 'yes') {
+                            tilePlayer.position = Math.min(gameState.board.length - 1, tilePlayer.position + 10);
+                            renderBoard();
+                            updateStatus();
+                            showModal('info', `${escapeHtml(tilePlayer.name)} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+                        } else {
+                            tilePlayer.position = Math.max(0, tilePlayer.position - action.steps);
+                            renderBoard();
+                            updateStatus();
+                            showModal('info', `${escapeHtml(tilePlayer.name)} は${action.steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
+                        }
+                    }
+                    break;
+            }
+        }
+
+        function showAngryPassDevice(selectedPlayerIndex) {
+            const selectedPlayer = gameState.players[selectedPlayerIndex];
+            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">📱 デバイスを渡してください</div>
+                <div class="modal-text">
+                    <strong>${escapeHtml(selectedPlayer.name)}</strong> さんが審査します。<br>
+                    デバイスを <strong>${escapeHtml(selectedPlayer.name)}</strong> さんに渡してください。<br>
+                    <small style="color:#999;">（${escapeHtml(currentPlayer.name)}さんは見ないでください）</small>
+                </div>
+                <button class="btn btn-primary" style="margin-top:16px;width:100%;" data-action="angryPassDeviceConfirm" data-idx="${selectedPlayerIndex}">
+                    ${escapeHtml(selectedPlayer.name)}です、受け取りました
+                </button>
+            `;
+            modal.classList.add('show');
         }
 
         function showAngryDialog(selectedPlayerIndex) {
@@ -3367,12 +3552,22 @@ API Key / Project ID / Database URL を取得して入力
                 clearInterval(window.angryTimerId);
                 window.angryTimerId = null;
             }
-            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-            currentPlayer.position = Math.min(gameState.board.length - 1, currentPlayer.position + 10);
-            renderBoard();
-            updateStatus();
-            document.getElementById('modal').classList.remove('show');
-            showModal('info', `${currentPlayer.name} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+            if (gameState.playMode === 'online') {
+                // オンライン: タイルプレイヤーのデバイスに結果を送信
+                document.getElementById('modal').classList.remove('show');
+                gameState.firebaseRefs.roomRef.child('uiAction').set({
+                    type: 'angry_result',
+                    result: 'yes',
+                    tilePlayerIdx: window.angryOnlineTilePlayerIdx
+                });
+            } else {
+                const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+                currentPlayer.position = Math.min(gameState.board.length - 1, currentPlayer.position + 10);
+                renderBoard();
+                updateStatus();
+                document.getElementById('modal').classList.remove('show');
+                showModal('info', `${currentPlayer.name} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+            }
         }
 
         function handleAngryNo() {
@@ -3380,12 +3575,15 @@ API Key / Project ID / Database URL を取得して入力
                 clearInterval(window.angryTimerId);
                 window.angryTimerId = null;
             }
-            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
+            // オンライン時はタイルプレイヤー名をuiActionから取得
+            const tilePlayer = gameState.playMode === 'online'
+                ? gameState.players[window.angryOnlineTilePlayerIdx]
+                : gameState.players[gameState.currentPlayerIndex];
             content.innerHTML = `
                 <div class="modal-title">😌 怒ってない！</div>
-                <div class="modal-text"><strong>${escapeHtml(currentPlayer.name)}</strong> さん、何マス戻りますか？（1〜10）</div>
+                <div class="modal-text"><strong>${escapeHtml(tilePlayer?.name || '')}</strong> さん、何マス戻りますか？（1〜10）</div>
                 <input type="number" id="angryBackInput" min="1" max="10" value="3"
                     style="width:80px;font-size:24px;text-align:center;padding:8px;border:2px solid #d1d5db;border-radius:8px;margin:12px 0;">
                 <div>
@@ -3402,12 +3600,23 @@ API Key / Project ID / Database URL を取得して入力
                 alert('1から10の数値を入力してください');
                 return;
             }
-            const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-            currentPlayer.position = Math.max(0, currentPlayer.position - steps);
-            renderBoard();
-            updateStatus();
-            document.getElementById('modal').classList.remove('show');
-            showModal('info', `${currentPlayer.name} は${steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
+            if (gameState.playMode === 'online') {
+                // オンライン: タイルプレイヤーのデバイスに結果を送信
+                document.getElementById('modal').classList.remove('show');
+                gameState.firebaseRefs.roomRef.child('uiAction').set({
+                    type: 'angry_result',
+                    result: 'no',
+                    steps: steps,
+                    tilePlayerIdx: window.angryOnlineTilePlayerIdx
+                });
+            } else {
+                const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+                currentPlayer.position = Math.max(0, currentPlayer.position - steps);
+                renderBoard();
+                updateStatus();
+                document.getElementById('modal').classList.remove('show');
+                showModal('info', `${currentPlayer.name} は${steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
+            }
         }
 
         function showModal(type, text, callback, titleOverride) {
@@ -3545,6 +3754,8 @@ const ACTION_HANDLERS = {
     freeMoveSubmit: () => freeMoveSubmit(),
     luckyNumberSubmit: () => luckyNumberSubmit(),
     morohajokenTarget: (el) => morohajokenTarget(Number(el.dataset.idx)),
+    selfAppealShowVoteDialog: () => selfAppealShowVoteDialog(),
+    angryPassDeviceConfirm: (el) => { closeModal(); showAngryDialog(Number(el.dataset.idx)); },
 };
 
 document.addEventListener('click', e => {
