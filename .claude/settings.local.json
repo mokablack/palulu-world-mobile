@@ -46,7 +46,8 @@
       "Bash(node:*)",
       "Bash(uv tool install --from \"git+https://github.com/oraios/serena\" serena)",
       "Bash(uv tool install \"serena-agent @ git+https://github.com/oraios/serena\")",
-      "Bash(cmd.exe /c \"where serena\")"
+      "Bash(cmd.exe /c \"where serena\")",
+      "Bash(where node:*)"
     ]
   }
 }

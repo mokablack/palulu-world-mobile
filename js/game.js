@@ -1459,39 +1459,50 @@ API Key / Project ID / Database URL を取得して入力
             const maxPos = gameState.board.length - 1;
             let stepsLeft = steps;
             let currentPos = player.position;
+            let direction = 1; // 1: 前進, -1: 折り返し（後退）
 
             function animateNextStep() {
-                currentPos = Math.min(currentPos + 1, maxPos);
+                currentPos += direction;
+                // ゴールで折り返し
+                if (currentPos >= maxPos) {
+                    currentPos = maxPos;
+                    direction = -1;
+                } else if (currentPos < 0) {
+                    currentPos = 0;
+                }
                 stepsLeft--;
                 player.position = currentPos;
                 renderBoard();
                 updateStatus();
 
-                if (currentPos >= maxPos) {
-                    setTimeout(() => triggerWin(), 500);
-                    return;
-                }
-
                 if (stepsLeft > 0) {
-                    // 通過マス: 他プレイヤーが設置した釘のチェック
-                    const nailOwner = gameState.nailTraps && gameState.nailTraps[currentPos];
-                    if (nailOwner !== undefined && nailOwner !== gameState.currentPlayerIndex) {
-                        delete gameState.nailTraps[currentPos];
-                        renderBoard();
-                        const trapperName = gameState.players[nailOwner]?.name || '誰か';
-                        showModal('info', `${trapperName}が設置した釘にひっかかった！\nここで強制停止！`, () => {
-                            promptNailThenEffect(currentPos);
-                        });
-                        return;
+                    // 通過マス: 前進中のみ釘のチェック
+                    if (direction === 1) {
+                        const nailOwner = gameState.nailTraps && gameState.nailTraps[currentPos];
+                        if (nailOwner !== undefined && nailOwner !== gameState.currentPlayerIndex) {
+                            delete gameState.nailTraps[currentPos];
+                            renderBoard();
+                            const trapperName = gameState.players[nailOwner]?.name || '誰か';
+                            showModal('info', `${trapperName}が設置した釘にひっかかった！\nここで強制停止！`, () => {
+                                promptNailThenEffect(currentPos);
+                            });
+                            return;
+                        }
                     }
                     setTimeout(animateNextStep, 250);
                 } else {
                     // 最終マスへの着地
-                    setTimeout(() => {
-                        if (!checkBlackholeAdjacency(currentPos) && !checkWhiteholeAdjacency(currentPos)) {
-                            promptNailThenEffect(currentPos);
-                        }
-                    }, 300);
+                    if (currentPos === maxPos) {
+                        // ゴールにぴったり着地
+                        setTimeout(() => triggerWin(), 500);
+                    } else {
+                        // 折り返しまたは通常着地
+                        setTimeout(() => {
+                            if (!checkBlackholeAdjacency(currentPos) && !checkWhiteholeAdjacency(currentPos)) {
+                                promptNailThenEffect(currentPos);
+                            }
+                        }, 300);
+                    }
                 }
             }
 
