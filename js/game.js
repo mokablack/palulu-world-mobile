@@ -1172,7 +1172,8 @@ API Key / Project ID / Database URL を取得して入力
 
             // ホストによるゲーム強制終了を検知
             roomRef.child('status').on('value', snap => {
-                if (snap.val() === 'abandoned' && gameState.mode === 'play' && !gameState.isHost) {
+                const status = snap.val();
+                if (status === 'abandoned' && gameState.mode === 'play' && !gameState.isHost) {
                     showModal('info', 'ホストがゲームを終了しました。\nルームへの参加画面に戻ります。', () => {
                         gameState.playMode = null;
                         gameState.roomId = null;
@@ -1180,6 +1181,21 @@ API Key / Project ID / Database URL を取得して入力
                         gameState.firebaseRefs = {};
                         switchMode('joinRoom');
                     });
+                } else if (status === 'waiting' && gameState.mode === 'play' && !gameState.isHost) {
+                    // ホストがゲームを中断 → ゲームリスナー解除してルーム待機へ
+                    roomRef.child('gameSnapshot').off();
+                    roomRef.child('winner').off();
+                    roomRef.child('uiAction').off();
+                    closeModal();
+                    gameState.playMode = null;
+                    gameState.winShown = false;
+                    switchMode('roomWaiting');
+                    roomRef.child('players').once('value').then(snap2 => {
+                        const data = snap2.val() || {};
+                        const list = Object.entries(data).map(([id, p]) => ({ id, name: p.name, connected: p.connected }));
+                        updateWaitingPlayers(list);
+                    });
+                    document.getElementById('displayRoomId').textContent = gameState.roomId;
                 }
             });
 
@@ -2936,13 +2952,27 @@ API Key / Project ID / Database URL を取得して入力
             const prevMode = gameState.playMode;
             // オンラインモード: リスナー解除 + ホストは参加者に通知
             if (prevMode === 'online' && gameState.firebaseRefs.roomRef) {
+                const roomRef = gameState.firebaseRefs.roomRef;
+                // ゲーム中のリスナーのみ解除（roomWaiting で使う players/status リスナーは保持）
+                roomRef.child('gameSnapshot').off();
+                roomRef.child('winner').off();
+                roomRef.child('uiAction').off();
                 if (gameState.isHost) {
-                    gameState.firebaseRefs.roomRef.child('status').set('abandoned');
+                    // ルームを壊さず waiting に戻す（ゲストへの通知も兼ねる）
+                    roomRef.update({ status: 'waiting' });
                 }
-                gameState.firebaseRefs.roomRef.child('gameSnapshot').off();
-                gameState.firebaseRefs.roomRef.child('winner').off();
-                gameState.firebaseRefs.roomRef.child('status').off();
-                if (gameState.firebaseRefs.playerRef) gameState.firebaseRefs.playerRef.remove();
+                // roomId / isHost / firebaseRefs は保持（ルームに残る）
+                gameState.playMode = null;
+                gameState.winShown = false;
+                // ルーム待機画面に戻り、プレイヤーリストを再描画
+                switchMode('roomWaiting');
+                roomRef.child('players').once('value').then(snap => {
+                    const data = snap.val() || {};
+                    const list = Object.entries(data).map(([id, p]) => ({ id, name: p.name, connected: p.connected }));
+                    updateWaitingPlayers(list);
+                });
+                document.getElementById('displayRoomId').textContent = gameState.roomId;
+                return;
             }
             gameState.playMode = null;
             gameState.roomId = null;
@@ -3324,6 +3354,7 @@ API Key / Project ID / Database URL を取得して入力
 
         // ========== 怒らせたら10進む ==========
         function showAngryRoulette() {
+            gameState.isRolling = true;
             const currentIdx = gameState.currentPlayerIndex;
             const otherEntries = gameState.players
                 .map((p, i) => ({ player: p, index: i }))
@@ -3473,6 +3504,7 @@ API Key / Project ID / Database URL を取得して入力
                 case 'angry_result':
                     if (gameState.players[action.tilePlayerIdx]?.id === gameState.playerId) {
                         roomRef.child('uiAction').remove();
+                        gameState.isRolling = false;
                         const tilePlayer = gameState.players[action.tilePlayerIdx];
                         if (action.result === 'yes') {
                             tilePlayer.position = Math.min(gameState.board.length - 1, tilePlayer.position + 10);
@@ -3561,6 +3593,7 @@ API Key / Project ID / Database URL を取得して入力
                     tilePlayerIdx: window.angryOnlineTilePlayerIdx
                 });
             } else {
+                gameState.isRolling = false;
                 const currentPlayer = gameState.players[gameState.currentPlayerIndex];
                 currentPlayer.position = Math.min(gameState.board.length - 1, currentPlayer.position + 10);
                 renderBoard();
@@ -3610,6 +3643,7 @@ API Key / Project ID / Database URL を取得して入力
                     tilePlayerIdx: window.angryOnlineTilePlayerIdx
                 });
             } else {
+                gameState.isRolling = false;
                 const currentPlayer = gameState.players[gameState.currentPlayerIndex];
                 currentPlayer.position = Math.max(0, currentPlayer.position - steps);
                 renderBoard();
@@ -3634,7 +3668,7 @@ API Key / Project ID / Database URL を取得して入力
                     <div class="modal-text" style="white-space:pre-line;">${escapeHtml(text)}</div>
                     ${babelNote ? `<div class="modal-text" style="white-space:pre-line;">${escapeHtml(babelNote)}</div>` : ''}
                     ${onlineButtons}
-                    <button class="btn btn-primary" data-action="closeModalThenSwitchPlayMode">終了</button>
+                    <button class="btn btn-primary" data-action="${gameState.playMode === 'online' ? 'closeModalThenReturnToWaiting' : 'closeModalThenSwitchPlayMode'}">終了</button>
                 `;
             } else if (type === 'vanished') {
                 content.innerHTML = `
@@ -3676,6 +3710,29 @@ function closeModalThenRollDice() { closeModal(); doRollDice(); }
 function closeModalThenNextTurn() { closeModal(); nextTurn(); }
 function closeModalThenSwitchEditor() { closeModal(); switchMode('editor'); }
 function closeModalThenSwitchPlayMode() { closeModal(); switchMode('playMode'); }
+function closeModalThenReturnToWaiting() {
+    closeModal();
+    const roomRef = gameState.firebaseRefs.roomRef;
+    if (roomRef) {
+        roomRef.child('gameSnapshot').off();
+        roomRef.child('winner').off();
+        roomRef.child('uiAction').off();
+        if (gameState.isHost) {
+            roomRef.update({ status: 'waiting', winner: null });
+        }
+    }
+    gameState.playMode = null;
+    gameState.winShown = false;
+    switchMode('roomWaiting');
+    if (roomRef) {
+        roomRef.child('players').once('value').then(snap => {
+            const data = snap.val() || {};
+            const list = Object.entries(data).map(([id, p]) => ({ id, name: p.name, connected: p.connected }));
+            updateWaitingPlayers(list);
+        });
+        document.getElementById('displayRoomId').textContent = gameState.roomId;
+    }
+}
 function closeModalThenRestartOnline() { closeModal(); restartOnlineGame(); }
 function closeModalThenNailCallback() { closeModal(); window.nailCallback(); }
 
@@ -3716,6 +3773,7 @@ const ACTION_HANDLERS = {
     closeModalThenNextTurn: () => closeModalThenNextTurn(),
     closeModalThenSwitchEditor: () => closeModalThenSwitchEditor(),
     closeModalThenSwitchPlayMode: () => closeModalThenSwitchPlayMode(),
+    closeModalThenReturnToWaiting: () => closeModalThenReturnToWaiting(),
     closeModalThenRestartOnline: () => closeModalThenRestartOnline(),
     closeModalThenNailCallback: () => closeModalThenNailCallback(),
     closeModalThenChooseDice: (el) => { closeModal(); chooseDiceResult(Number(el.dataset.result)); },

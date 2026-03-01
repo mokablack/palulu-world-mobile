@@ -50,7 +50,9 @@
       "Bash(where node:*)",
       "mcp__serena__onboarding",
       "mcp__serena__list_dir",
-      "mcp__serena__write_memory"
+      "mcp__serena__write_memory",
+      "mcp__serena__read_memory",
+      "Bash(py:*)"
     ]
   }
 }
