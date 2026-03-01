@@ -498,10 +498,6 @@
         #playScreen {
             padding-top: 0;
         }
-
-        #playScreen.with-banner {
-            padding-top: 60px;
-        }
         
         /* モーダル */
         .modal {
