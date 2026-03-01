@@ -26,9 +26,9 @@ No build tooling. Open `index.html` directly in any browser.
 ```
 index.html        (~216 lines) — HTML skeleton only
 css/
-  styles.css      (~762 lines) — all styles
+  styles.css      (~765 lines) — all styles
 js/
-  game.js         (~3046 lines) — all game logic
+  game.js         (~3434 lines) — all game logic
 ```
 
 `index.html` loads Font Awesome 6 CDN, `css/styles.css`, Firebase SDK v8 CDN (3 scripts), then `js/game.js`.
@@ -50,11 +50,11 @@ js/
 13. オンラインマルチ (Firebase実装)
 14. ゲームプレイ — dice, movement, tile effects
 15. アイテム取得共通処理
-16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 釘＋トンカチコンボ / 釘の設置 (per-item handlers, L1582–L1879)
-17. 怪しい商人UI — `showMerchantDialog()` and related (L2171)
-18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()` (L2449)
-19. 自分をアピールして！ / 好きなだけ進んでいいよ / 今日のラッキーナンバーは？ / 怒らせたら10進む (custom event UIs, L2561–L2960)
-20. イベント委譲ディスパッチャー — `closeModal*` bridge functions, `ACTION_HANDLERS`, `document.addEventListener('click', ...)`, `init()` call (L2963)
+16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 形代＋下剋上ハンドラ / 釘＋トンカチコンボ / 釘の設置 (per-item handlers)
+17. 怪しい商人UI — `showMerchantDialog()` and related
+18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()`
+19. 自分をアピールして！ / 好きなだけ進んでいいよ / 今日のラッキーナンバーは？ / 怒らせたら10進む (custom event UIs)
+20. イベント委譲ディスパッチャー — `closeModal*` bridge functions, `ACTION_HANDLERS`, `document.addEventListener('click', ...)`, `init()` call
 
 ---
 
@@ -84,7 +84,6 @@ let gameState = {
 
     // Item effect flags (active for current turn)
     bootsActive: false,
-    shieldActive: false,
     binocularsActive: false,
     koshindoActive: false,
     sakasamaActive: false,
@@ -139,10 +138,10 @@ let gameState = {
 const TILE_TYPES = { NORMAL, FORWARD, BACKWARD, ITEM, EVENT, REST, START, GOAL };
 // REST: { id: 'rest', name: '休み', color: 'tile-rest', effect: { type: 'rest', value: 1 } }
 
-// Items (13 total) — each has id, name, icon (emoji), effect (string)
+// Items (15 total) — each has id, name, icon (emoji), effect (string)
 const ITEMS = [
     { id: 'boots',      name: '魔法の靴',         icon: '👟', ... },
-    { id: 'shield',     name: '盾',               icon: '🛡️', ... },
+    { id: 'shield',     name: '盾',               icon: '🛡️', ... },  // reactive: prompted on backward tile
     { id: 'binoculars', name: '双眼鏡',           icon: '🔭', ... },
     { id: 'timestop',   name: 'タイムストップ',   icon: '⏸️', ... },
     { id: 'koshindo',   name: 'コシンドスプレー', icon: '💨', ... },
@@ -153,6 +152,8 @@ const ITEMS = [
     { id: 'snatcher',   name: 'スナッチャー',     icon: '🎣', ... },  // 他プレイヤーのアイテムを1つ奪う
     { id: 'nail',       name: '釘',               icon: '📌', ... },
     { id: 'hammer',     name: 'トンカチ',         icon: '🔨', ... },
+    { id: 'katashiro',  name: '形代',             icon: '🪆', ... },  // 受動アイテム: 攻撃効果を第三者に転嫁
+    { id: 'gekokujo',   name: '下剋上',           icon: '⚔️', ... },  // トップと位置交換（全アイテム失う）
     { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', ... },
 ];
 
@@ -201,6 +202,13 @@ const EVENTS = [
 | `handleEvent(eventEffect)` | Dispatch event effects including all new event types |
 | `showMerchantDialog()` | 3択アイテム選択UI for 怪しい商人 event; each offer has 25% chance of being fake (消滅) |
 | `useKagemaiha()` | Move to 1-rank-above player's tile, apply tile effect without dice |
+| `useGekokujo()` | Swap position with top-ranked opponent; calls `applyGekokujoSwap()` |
+| `applyGekokujoSwap(targetIndex, katashiroUsed, originalTopIndex, backSteps?)` | Execute the position swap; handles katashiro interception |
+| `findTopOpponentIndex(playerIndex)` | Return index of highest-ranked opponent relative to given player |
+| `applyMoveEffect(moveValue)` | Shared helper — shows modal then applies forward/backward movement |
+| `useShield(itemIndex)` | Consume shield from inventory; block backward tile effect |
+| `shieldSkipAndMove(moveValue)` | Decline shield use; apply backward movement normally |
+| `promptKatashiroChoice(context)` | Show 形代 intercept dialog when attacked player holds katashiro |
 | `nextTurn()` | Advance turn; handles skip, nailPlacement prompt |
 | `showModal(type, message, callback?, titleOverride?)` | `type`: `'info'` \| `'win'` \| `'vanished'`; `titleOverride` replaces default title |
 | `buildResultText(winnerName)` | Build ranked result string for win modal |
@@ -210,13 +218,19 @@ const EVENTS = [
 | `exitGame()` | Return to playMode screen and reset game state |
 | `createOnlineRoom()` / `joinOnlineRoom()` | Online multiplayer functions |
 
-### Pre-roll items (usable before dice)
+### Item usage timing
 
-`PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'kagemaiha']`
+**Pre-roll** (usable before dice — `PRE_ROLL_ITEMS`):
+`['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha']`
 
-Post-roll items (`koshindo`, `sakasama`) are triggered after landing.
+**Post-roll** (triggered after landing): `koshindo`, `sakasama`
 
-> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in two separate code paths inside `rollDice()` — once for the `hasPreRollItems` check and once inside `promptItemUsage()`. If you add items to this list, update **both** occurrences. Also note: `hammer` has an additional same-tile check in both occurrences — match this pattern for any item with a precondition.
+**Reactive** (triggered when specific condition is met mid-effect):
+- `shield` — prompted when player lands on a backward tile (`tile.effect.type === 'move'` with `value < 0`)
+
+**Passive** (no active use): `katashiro` — intercepts incoming attack items; `curseddoll`
+
+> **Note:** `PRE_ROLL_ITEMS` is defined as a local `const` in **two separate places** inside `rollDice()` — once for the `hasPreRollItems` check and once inside `promptItemUsage()`. Update **both** when modifying this list. Items with a precondition (e.g., `hammer` requires a co-located opponent, `snatcher` requires a target with items, `gekokujo` requires a non-self top player) need the precondition check added in both locations.
 
 ### babel display rule
 
@@ -264,7 +278,7 @@ Sections are shown/hidden with `.hidden`. Board grid regenerated via `innerHTML`
 
 - **UI strings**: Japanese only — do not change to English
 - **Section headers**: `// ========== Section Name ==========`
-- **External CDN libraries**: Firebase SDK v11 Compat CDN + Font Awesome 6.7.2 CDN — no other external dependencies
+- **External CDN libraries**: Firebase SDK v8 Compat CDN + Font Awesome 6.7.2 CDN — no other external dependencies
 - **State mutations**: mutate `gameState` directly, then call `render*()` functions
 - **DOM updates**: regenerate `innerHTML`; avoid partial mutations
 - **XSS safety**: always wrap user-supplied strings in `escapeHtml()` before injecting into `innerHTML`
@@ -297,6 +311,7 @@ Multi-step dialogs (merchant, nail, self_appeal, etc.) pass state between `data-
 | `window.nailCallback` | nail placement confirmation |
 | `window.merchantItems3`, `window.merchantRemaining`, `window.merchantPicked` | merchant dialog state |
 | `window.selfAppealCurrentPlayer`, `window.selfAppealVoters`, `window.selfAppealTimerId`, `window.selfAppealVoterArrayIndex`, `window.selfAppealCurrentVotes` | self_appeal event flow |
+| `window.katashiroContext` | katashiro intercept flow — `{ kind, holderIndex, attackerIndex }` |
 
 ---
 

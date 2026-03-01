@@ -93,7 +93,6 @@
 
             // アイテム効果フラグ
             bootsActive: false,
-            shieldActive: false,
             binocularsActive: false,
             koshindoActive: false,
             sakasamaActive: false,
@@ -1173,7 +1172,7 @@ API Key / Project ID / Database URL を取得して入力
             }
 
             // サイコロ前に使えるアイテムがある場合のみ確認を出す
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
+            const PRE_ROLL_ITEMS = ['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
             const hasPreRollItems = currentPlayer.items.some(id => {
                 if (!PRE_ROLL_ITEMS.includes(id)) return false;
                 if (id === 'hammer') {
@@ -1199,7 +1198,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             const content = document.getElementById('modalContent');
 
-            const PRE_ROLL_ITEMS = ['boots', 'shield', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
+            const PRE_ROLL_ITEMS = ['boots', 'binoculars', 'timestop', 'snatcher', 'babel', 'hammer', 'gekokujo', 'kagemaiha'];
             const usableEntries = player.items
                 .map((itemId, index) => ({ itemId, index }))
                 .filter(({ itemId }) => {
@@ -1264,10 +1263,6 @@ API Key / Project ID / Database URL を取得して入力
                 case 'boots':
                     gameState.bootsActive = true;
                     showModal('info', `${itemLabel('boots')} を使った！\n移動量に+2される！`, () => doRollDice());
-                    break;
-                case 'shield':
-                    gameState.shieldActive = true;
-                    showModal('info', `${itemLabel('shield')} を使った！\n次に戻るマスの効果を無効化する！`, () => doRollDice());
                     break;
                 case 'binoculars':
                     gameState.binocularsActive = true;
@@ -1726,6 +1721,39 @@ API Key / Project ID / Database URL を取得して入力
             updateStatus();
             closeModal();
             showModal('info', 'コシンドスプレーを使った！\nマスの効果を無効化した！', () => nextTurn());
+        }
+
+        function applyMoveEffect(moveValue) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            showModal('info',
+                moveValue > 0 ? `${Math.abs(moveValue)}マス進む！` : `${Math.abs(moveValue)}マス戻る...`,
+                () => {
+                    let newPos = player.position + moveValue;
+                    if (newPos < 0) newPos = 0;
+                    if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+                    player.position = newPos;
+                    renderBoard();
+                    updateStatus();
+                    if (newPos >= gameState.board.length - 1) {
+                        triggerWin();
+                        return;
+                    }
+                    nextTurn();
+                }
+            );
+        }
+
+        function useShield(itemIndex) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(itemIndex, 1);
+            updateStatus();
+            closeModal();
+            showModal('info', '🛡️ 盾を使った！\n戻るマスの効果を無効化した！', () => nextTurn());
+        }
+
+        function shieldSkipAndMove(moveValue) {
+            closeModal();
+            applyMoveEffect(moveValue);
         }
 
         // ========== バベル ==========
@@ -2258,33 +2286,26 @@ API Key / Project ID / Database URL を取得して入力
                     showModal('info', msg, () => nextTurn());
                     break;
                 }
-                case 'move':
+                case 'move': {
                     const moveValue = tile.effect.value;
-                    if (moveValue < 0 && gameState.shieldActive) {
-                        gameState.shieldActive = false;
-                        showModal('info', `盾が${Math.abs(moveValue)}マス戻る効果を無効化した！`, () => {
-                            nextTurn();
-                        });
-                        break;
-                    }
-                    showModal('info',
-                        moveValue > 0 ? `${Math.abs(moveValue)}マス進む！` : `${Math.abs(moveValue)}マス戻る...`,
-                        () => {
-                            let newPos = player.position + moveValue;
-                            if (newPos < 0) newPos = 0;
-                            if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
-                            player.position = newPos;
-                            renderBoard();
-                            updateStatus();
-                            // ゴール到達チェック
-                            if (newPos >= gameState.board.length - 1) {
-                                triggerWin();
-                                return;
-                            }
-                            nextTurn();
+                    if (moveValue < 0) {
+                        const shieldIndex = player.items.indexOf('shield');
+                        if (shieldIndex !== -1) {
+                            const modal = document.getElementById('modal');
+                            const content = document.getElementById('modalContent');
+                            content.innerHTML = `
+                                <div class="modal-title">🛡️ 盾</div>
+                                <div class="modal-text">${Math.abs(moveValue)}マス戻る効果を無効化しますか？</div>
+                                <button class="btn btn-primary" data-action="useShield" data-idx="${shieldIndex}">使う（効果を無効化）</button>
+                                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="shieldSkipAndMove" data-value="${moveValue}">使わない</button>
+                            `;
+                            modal.classList.add('show');
+                            break;
                         }
-                    );
+                    }
+                    applyMoveEffect(moveValue);
                     break;
+                }
                     
                 case 'item':
                     const enabledItemsList = ITEMS.filter(item => gameState.enabledItems[item.id]);
@@ -3374,6 +3395,8 @@ const ACTION_HANDLERS = {
     closeModalThenMovePlayer: (el) => { closeModal(); movePlayer(Number(el.dataset.steps)); },
     useSakasama: (el) => useSakasama(Number(el.dataset.result), Number(el.dataset.itemIndex), Number(el.dataset.targetIndex)),
     useKoshindo: (el) => useKoshindo(Number(el.dataset.idx)),
+    useShield: (el) => useShield(Number(el.dataset.idx)),
+    shieldSkipAndMove: (el) => shieldSkipAndMove(Number(el.dataset.value)),
     closeModalThenExecuteTile: (el) => { closeModal(); executeTileEffect(gameState.board[Number(el.dataset.pos)]); },
     setBabelTarget: (el) => setBabelTarget(Number(el.dataset.idx)),
     snatcherSelectPlayer: (el) => snatcherSelectPlayer(Number(el.dataset.idx)),
