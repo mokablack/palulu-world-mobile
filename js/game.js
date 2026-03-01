@@ -130,7 +130,13 @@
         function loadFirebaseConfig() {
             const saved = localStorage.getItem('firebaseConfig');
             if (!saved) return;
-            const config = JSON.parse(saved);
+            let config;
+            try {
+                config = JSON.parse(saved);
+            } catch (e) {
+                localStorage.removeItem('firebaseConfig');
+                return;
+            }
             // 旧バージョン (projectIdなし) は再設定を促す
             if (!config.projectId) {
                 localStorage.removeItem('firebaseConfig');
@@ -459,12 +465,25 @@
         function loadEnabledItems() {
             const saved = localStorage.getItem('enabledItems');
             if (saved) {
-                gameState.enabledItems = JSON.parse(saved);
-                ITEMS.forEach(item => {
-                    if (gameState.enabledItems[item.id] === undefined) {
+                let parsed;
+                try {
+                    parsed = JSON.parse(saved);
+                } catch (e) {
+                    localStorage.removeItem('enabledItems');
+                    parsed = null;
+                }
+                if (parsed && typeof parsed === 'object') {
+                    gameState.enabledItems = parsed;
+                    ITEMS.forEach(item => {
+                        if (gameState.enabledItems[item.id] === undefined) {
+                            gameState.enabledItems[item.id] = true;
+                        }
+                    });
+                } else {
+                    ITEMS.forEach(item => {
                         gameState.enabledItems[item.id] = true;
-                    }
-                });
+                    });
+                }
             } else {
                 ITEMS.forEach(item => {
                     gameState.enabledItems[item.id] = true;
@@ -630,7 +649,21 @@
                 showModal('info', `スロット ${slot} にデータがありません`);
                 return;
             }
-            const stageData = JSON.parse(saved);
+            let stageData;
+            try {
+                stageData = JSON.parse(saved);
+            } catch (e) {
+                localStorage.removeItem(`stageData_${slot}`);
+                closeModal();
+                showModal('info', `スロット ${slot} のデータが破損していたため削除しました。`);
+                return;
+            }
+            if (!stageData || !stageData.gridSize || !stageData.board) {
+                localStorage.removeItem(`stageData_${slot}`);
+                closeModal();
+                showModal('info', `スロット ${slot} のデータが破損していたため削除しました。`);
+                return;
+            }
             gameState.gridSize = stageData.gridSize;
             gameState.board = stageData.board;
             document.getElementById('rowsInput').value = gameState.gridSize.rows;
@@ -932,7 +965,7 @@
                     loadOnlineGameState();
                 } else if (status === 'abandoned' && gameState.mode === 'roomWaiting') {
                     showModal('info', 'ホストが切断しました。\nルームを退出します。');
-                    setTimeout(() => { if (gameState.mode === 'roomWaiting') leaveRoom(); }, 2000);
+                    setTimeout(() => { if (gameState.mode === 'roomWaiting') leaveRoom(true); }, 2000);
                 }
             });
 
@@ -992,8 +1025,8 @@
             });
         }
 
-        function leaveRoom() {
-            if (!confirm('ルームを退出しますか？')) return;
+        function leaveRoom(silent = false) {
+            if (!silent && !confirm('ルームを退出しますか？')) return;
             const roomRef = gameState.firebaseRefs.roomRef;
             if (roomRef) {
                 roomRef.child('players').off();
@@ -1015,11 +1048,12 @@
     "rooms": {
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null && (
-          !data.exists() ||
-          data.child('hostId').val() === auth.uid ||
-          data.child('players').child(auth.uid).exists()
-        )",
+        ".write": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
+        "status":       { ".write": "auth != null && (data.parent().child('hostId').val() === auth.uid || !data.parent().exists())" },
+        "winner":       { ".write": "auth != null && data.parent().child('hostId').val() === auth.uid" },
+        "gameSnapshot": { ".write": "auth != null && data.parent().child('hostId').val() === auth.uid" },
+        "boardData":    { ".write": "auth != null && data.parent().child('hostId').val() === auth.uid" },
+        "gridSize":     { ".write": "auth != null && data.parent().child('hostId').val() === auth.uid" },
         "players": {
           "$playerId": {
             ".write": "auth != null && $playerId === auth.uid"
@@ -1067,9 +1101,19 @@ API Key / Project ID / Database URL を取得して入力
                 const data = snap.val();
                 if (!data || data.status !== 'started') return;
 
-                gameState.board = JSON.parse(data.boardData);
-                gameState.gridSize = JSON.parse(data.gridSize);
-                const saved = JSON.parse(data.gameSnapshot);
+                let boardData;
+                let gridSize;
+                let saved;
+                try {
+                    boardData = JSON.parse(data.boardData);
+                    gridSize = JSON.parse(data.gridSize);
+                    saved = JSON.parse(data.gameSnapshot);
+                } catch (e) {
+                    return;
+                }
+                if (!saved || !Array.isArray(saved.players)) return;
+                gameState.board = boardData;
+                gameState.gridSize = gridSize;
                 gameState.players = saved.players;
                 gameState.currentPlayerIndex = saved.currentPlayerIndex;
                 gameState.playMode = 'online';
@@ -1090,7 +1134,13 @@ API Key / Project ID / Database URL を取得して入力
             roomRef.child('gameSnapshot').on('value', snap => {
                 if (!snap.exists() || gameState.mode !== 'play' || gameState.isRolling) return;
 
-                const saved = JSON.parse(snap.val());
+                let saved;
+                try {
+                    saved = JSON.parse(snap.val());
+                } catch (e) {
+                    return;
+                }
+                if (!saved || !Array.isArray(saved.players)) return;
                 // 常にリモートの状態を適用する（isRollingがロール中の上書きを防ぐ）
                 gameState.players = saved.players;
                 gameState.currentPlayerIndex = saved.currentPlayerIndex;
@@ -1310,7 +1360,6 @@ API Key / Project ID / Database URL を取得して入力
                     useGekokujo();
                     break;
                 case 'kagemaiha':
-                    player.items.splice(itemIndex, 1);
                     useKagemaiha();
                     break;
                 default:
@@ -2514,7 +2563,11 @@ API Key / Project ID / Database URL を取得して入力
                 showModal('info', '怪しい商人に出会ったが、商品が何もなかった...', () => nextTurn());
                 return;
             }
-            const shuffled = enabledItemsList.slice().sort(() => Math.random() - 0.5);
+            const shuffled = enabledItemsList.slice();
+            for (let i = shuffled.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+            }
             const items3 = shuffled.slice(0, Math.min(3, shuffled.length));
             window.merchantItems3 = items3;
 
@@ -2834,10 +2887,16 @@ API Key / Project ID / Database URL を取得して入力
                 position: 0,
                 items: [],
                 skipTurns: 0,
-                babelTarget: null
+                babelTarget: null,
+                immuneTurns: 0
             }));
             gameState.currentPlayerIndex = 0;
             gameState.winShown = false;
+            gameState.nailTraps = {};
+            gameState.bootsActive = false;
+            gameState.binocularsActive = false;
+            gameState.koshindoActive = false;
+            gameState.sakasamaActive = false;
             renderBoard();
             updateStatus();
 
