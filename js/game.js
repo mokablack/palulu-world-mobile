@@ -31,6 +31,7 @@
         
         // アイテム表示ラベル（アイコン + 名前）
         function itemLabel(itemId) {
+            if (itemId === 'hito_katashiro') return '🪆 他人の形代';
             const displayId = itemId === 'babel' ? 'star' : itemId;
             const item = ITEMS.find(i => i.id === displayId);
             if (!item) return itemId;
@@ -1359,14 +1360,24 @@ API Key / Project ID / Database URL を取得して入力
                     break;
                 case 'timestop': {
                     const affected = [];
+                    const katashiroBlocked = [];
                     gameState.players.forEach((p, i) => {
                         if (i !== gameState.currentPlayerIndex && p.immuneTurns <= 0) {
-                            p.skipTurns = 1;
-                            affected.push(p.name);
+                            if (p.items.includes('katashiro')) {
+                                katashiroBlocked.push(i);
+                            } else {
+                                p.skipTurns = 1;
+                                affected.push(p.name);
+                            }
                         }
                     });
-                    const affectedText = affected.length > 0 ? affected.join('、') : '対象なし（全員免疫中）';
-                    showModal('info', `${itemLabel('timestop')} を使った！\n${affectedText}が1ターン休みになった！`, () => doRollDice());
+                    katashiroBlocked.forEach(i => consumeKatashiro(i));
+                    const affectedText = affected.length > 0 ? affected.join('、') : '対象なし（全員免疫中または形代で無効化）';
+                    const blockedText = katashiroBlocked.length > 0
+                        ? `\n🪆 ${katashiroBlocked.map(i => gameState.players[i]?.name || '').join('、')}は形代で無効化！`
+                        : '';
+                    updateStatus();
+                    showModal('info', `${itemLabel('timestop')} を使った！\n${affectedText}が1ターン休みになった！${blockedText}`, () => doRollDice());
                     break;
                 }
                 case 'snatcher':
@@ -1384,6 +1395,11 @@ API Key / Project ID / Database URL を取得して入力
                         break;
                     }
                     if (samePos.length === 1) {
+                        if (samePos[0].items.includes('katashiro')) {
+                            const targetIdx = gameState.players.indexOf(samePos[0]);
+                            autoConsumeKatashiro(targetIdx, 'トンカチの効果', () => doRollDice());
+                            break;
+                        }
                         samePos[0].skipTurns = 1;
                         showModal('info', `${itemLabel('hammer')} を使った！\n${samePos[0].name}が1回休みになった！`, () => doRollDice());
                         break;
@@ -1467,9 +1483,16 @@ API Key / Project ID / Database URL を取得して入力
         function executeMorohajoken(targetIndex) {
             const target = gameState.players[targetIndex];
             const maxPos = gameState.board.length - 1;
-            const roll = Math.floor(Math.random() * 100) + 1;
             const isMe = targetIndex === gameState.currentPlayerIndex;
             const targetName = isMe ? '自分' : escapeHtml(target.name);
+
+            // 他プレイヤーへの使用時、ターゲットが形代を持っていれば自動消費で無効化
+            if (!isMe && target.items.includes('katashiro')) {
+                autoConsumeKatashiro(targetIndex, '諸刃の剣の効果', () => doRollDice());
+                return;
+            }
+
+            const roll = Math.floor(Math.random() * 100) + 1;
 
             if (roll === 1) {
                 const destPos = Math.max(0, maxPos - 1);
@@ -1492,8 +1515,10 @@ API Key / Project ID / Database URL を取得して入力
                 const dice = document.getElementById('dice');
                 dice.classList.add('rolling');
                 setTimeout(() => {
-                    const r1 = Math.floor(Math.random() * 6) + 1;
-                    const r2 = Math.floor(Math.random() * 6) + 1;
+                    const binoPlayer = gameState.players[gameState.currentPlayerIndex];
+                    const penalty = (binoPlayer && binoPlayer.items.includes('hito_katashiro')) ? 2 : 0;
+                    const r1 = Math.max(1, Math.floor(Math.random() * 6) + 1 - penalty);
+                    const r2 = Math.max(1, Math.floor(Math.random() * 6) + 1 - penalty);
                     dice.textContent = '?';
                     dice.classList.remove('rolling');
                     gameState.isRolling = false;
@@ -1511,6 +1536,10 @@ API Key / Project ID / Database URL を取得して入力
                 if (gameState.bootsActive) {
                     result += 2;
                     gameState.bootsActive = false;
+                }
+                const rollingPlayer = gameState.players[gameState.currentPlayerIndex];
+                if (rollingPlayer && rollingPlayer.items.includes('hito_katashiro')) {
+                    result = Math.max(1, result - 2);
                 }
                 gameState.diceValue = result;
                 dice.textContent = result;
@@ -1574,6 +1603,12 @@ API Key / Project ID / Database URL を取得して入力
                             delete gameState.nailTraps[currentPos];
                             renderBoard();
                             const trapperName = gameState.players[nailOwner]?.name || '誰か';
+                            if (player.items.includes('katashiro')) {
+                                autoConsumeKatashiro(gameState.currentPlayerIndex, '釘の効果', () => {
+                                    setTimeout(animateNextStep, 250);
+                                });
+                                return;
+                            }
                             showModal('info', `${trapperName}が設置した釘にひっかかった！\nここで強制停止！`, () => {
                                 promptNailThenEffect(currentPos);
                             });
@@ -1815,12 +1850,7 @@ API Key / Project ID / Database URL を取得して入力
                 showModal('info', `逆さまスプレーを使った！\n${result}マス逆方向に進む！`, () => movePlayer(-result));
             } else {
                 if (targetPlayer.items.includes('katashiro')) {
-                    promptKatashiroChoice({
-                        kind: 'sakasama',
-                        holderIndex: targetPlayerIndex,
-                        attackerIndex: gameState.currentPlayerIndex,
-                        result: result
-                    });
+                    autoConsumeKatashiro(targetPlayerIndex, '逆さまスプレーの効果', () => nextTurn());
                     return;
                 }
                 // 他プレイヤーに使う: そのプレイヤーを後退させ、自分は通常移動
@@ -2011,8 +2041,15 @@ API Key / Project ID / Database URL を取得して入力
 
         function snatcherStealItem(targetPlayerIndex, targetItemIndex) {
             const targetPlayer = gameState.players[targetPlayerIndex];
+            // 形代を持っているターゲット: 選んだアイテムに関わらず形代が奪われる
             if (targetPlayer && targetPlayer.items.includes('katashiro')) {
-                promptSnatcherKatashiro(targetPlayerIndex, targetItemIndex);
+                const attacker = gameState.players[gameState.currentPlayerIndex];
+                const katashiroIdx = targetPlayer.items.indexOf('katashiro');
+                targetPlayer.items.splice(katashiroIdx, 1);
+                attacker.items.push('hito_katashiro');
+                closeModal();
+                updateStatus();
+                showModal('info', `スナッチャー発動！\n🪆 形代が割り込んだ！\n${escapeHtml(targetPlayer.name)}から「他人の形代」を奪った！\n${escapeHtml(attacker.name)}はサイコロの目が常に-2される！`, () => doRollDice());
                 return;
             }
             performSnatcherSteal(targetPlayerIndex, targetItemIndex);
@@ -2051,11 +2088,7 @@ API Key / Project ID / Database URL を取得して入力
             const target = gameState.players[targetIndex];
             if (target.items.includes('katashiro')) {
                 closeModal();
-                promptKatashiroChoice({
-                    kind: 'hammer',
-                    holderIndex: targetIndex,
-                    attackerIndex: gameState.currentPlayerIndex
-                });
+                autoConsumeKatashiro(targetIndex, 'トンカチの効果', () => doRollDice());
                 return;
             }
             target.skipTurns = 1;
@@ -2069,6 +2102,15 @@ API Key / Project ID / Database URL を取得して入力
             if (!holder) return;
             const katashiroIdx = holder.items.indexOf('katashiro');
             if (katashiroIdx !== -1) holder.items.splice(katashiroIdx, 1);
+        }
+
+        // 形代自動消費: 負の効果を自動でブロックしてアイテムを消費する
+        function autoConsumeKatashiro(holderIndex, effectDescription, callback) {
+            consumeKatashiro(holderIndex);
+            const holder = gameState.players[holderIndex];
+            if (!holder) { callback(); return; }
+            updateStatus();
+            showModal('info', `🪆 形代が発動！\n${escapeHtml(holder.name)}への${effectDescription}が無効化された！`, callback);
         }
 
         function applyKatashiroPenalty(holderIndex) {
@@ -2273,11 +2315,7 @@ API Key / Project ID / Database URL を取得して入力
             }
             const topPlayer = gameState.players[topIndex];
             if (topPlayer.items.includes('katashiro')) {
-                promptKatashiroChoice({
-                    kind: 'gekokujo',
-                    holderIndex: topIndex,
-                    attackerIndex: currentIndex
-                });
+                autoConsumeKatashiro(topIndex, '下剋上の効果', () => doRollDice());
                 return;
             }
             applyGekokujoSwap(topIndex, false, topIndex);
@@ -2574,31 +2612,58 @@ API Key / Project ID / Database URL を取得して入力
                     showModal('info', 'もう一度サイコロを振れます！');
                 };
             } else if (eventEffect.eventEffect === 'skip') {
-                player.skipTurns = 1;
-            } else if (typeof eventEffect.eventEffect === 'number') {
-                callback = () => {
-                    let newPos = player.position + eventEffect.eventEffect;
-                    if (newPos < 0) newPos = 0;
-                    if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
-                    player.position = newPos;
-                    renderBoard();
+                // 落とし穴: 形代があれば自動消費で無効化
+                if (player.items.includes('katashiro')) {
+                    consumeKatashiro(gameState.currentPlayerIndex);
                     updateStatus();
-                    if (newPos >= gameState.board.length - 1) {
-                        triggerWin();
-                        return;
-                    }
-                    executeTileEffect(gameState.board[newPos]);
-                };
+                    eventText = `🪆 形代が発動！\n${escapeHtml(player.name)}への落とし穴の効果が無効化された！`;
+                } else {
+                    player.skipTurns = 1;
+                }
+            } else if (typeof eventEffect.eventEffect === 'number') {
+                const moveVal = eventEffect.eventEffect;
+                if (moveVal < 0 && player.items.includes('katashiro')) {
+                    // 突風など後退系イベント: 形代があれば自動消費で無効化
+                    consumeKatashiro(gameState.currentPlayerIndex);
+                    updateStatus();
+                    eventText = `🪆 形代が発動！\n${escapeHtml(player.name)}への後退効果が無効化された！`;
+                    callback = () => nextTurn();
+                } else {
+                    callback = () => {
+                        let newPos = player.position + moveVal;
+                        if (newPos < 0) newPos = 0;
+                        if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
+                        player.position = newPos;
+                        renderBoard();
+                        updateStatus();
+                        if (newPos >= gameState.board.length - 1) {
+                            triggerWin();
+                            return;
+                        }
+                        executeTileEffect(gameState.board[newPos]);
+                    };
+                }
             } else if (eventEffect.eventEffect === 'storm' && gameState.players.length > 1) {
                 callback = () => {
+                    const stormBlocked = [];
                     gameState.players.forEach((p, i) => {
                         if (i !== gameState.currentPlayerIndex) {
-                            p.position = Math.max(0, p.position - 1);
+                            if (p.items.includes('katashiro')) {
+                                stormBlocked.push(i);
+                            } else {
+                                p.position = Math.max(0, p.position - 1);
+                            }
                         }
                     });
+                    stormBlocked.forEach(i => consumeKatashiro(i));
+                    const blockedNames = stormBlocked.map(i => gameState.players[i]?.name || '').join('、');
                     renderBoard();
                     updateStatus();
-                    nextTurn();
+                    if (stormBlocked.length > 0) {
+                        showModal('info', `嵐が吹き荒れた！\n🪆 ${blockedNames}は形代で無効化！`, () => nextTurn());
+                    } else {
+                        nextTurn();
+                    }
                 };
             } else if (eventEffect.eventEffect === 'blackhole') {
                 callback = () => triggerBlackholeEffect();
@@ -2636,14 +2701,22 @@ API Key / Project ID / Database URL を取得して入力
                     });
                 };
             } else if (eventEffect.eventEffect === 'nameback') {
-                callback = () => {
-                    const steps = player.name.length;
-                    const newPos = Math.max(0, player.position - steps);
-                    player.position = newPos;
-                    renderBoard();
+                if (player.items.includes('katashiro')) {
+                    // 形代があれば自動消費で無効化
+                    consumeKatashiro(gameState.currentPlayerIndex);
                     updateStatus();
-                    showModal('info', `${player.name}は${steps}文字！${steps}マス戻った...`, () => nextTurn());
-                };
+                    eventText = `🪆 形代が発動！\n${escapeHtml(player.name)}への「自分の名前だけ戻る」が無効化された！`;
+                    callback = () => nextTurn();
+                } else {
+                    callback = () => {
+                        const steps = player.name.length;
+                        const newPos = Math.max(0, player.position - steps);
+                        player.position = newPos;
+                        renderBoard();
+                        updateStatus();
+                        showModal('info', `${player.name}は${steps}文字！${steps}マス戻った...`, () => nextTurn());
+                    };
+                }
             } else if (eventEffect.eventEffect === 'resetall') {
                 callback = () => {
                     gameState.players.forEach(p => { p.position = 0; });
