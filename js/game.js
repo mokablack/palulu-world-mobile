@@ -1488,24 +1488,114 @@ API Key / Project ID / Database URL を取得して入力
 
             // 他プレイヤーへの使用時、ターゲットが形代を持っていれば自動消費で無効化
             if (!isMe && target.items.includes('katashiro')) {
-                autoConsumeKatashiro(targetIndex, '諸刃の剣の効果', () => doRollDice());
+                autoConsumeKatashiro(targetIndex, '諸刃の剣の効果', () => nextTurn());
                 return;
             }
 
-            const roll = Math.floor(Math.random() * 100) + 1;
+            const applyRollResult = (roll, originalIndex) => {
+                if (roll === 1) {
+                    target.position = Math.max(0, maxPos - 1);
+                } else {
+                    target.position = 0;
+                }
+                renderBoard();
+                updateStatus();
+                const resultText = roll === 1
+                    ? `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}！\n🎉 大成功！\n${targetName}がゴール1マス前へワープした！`
+                    : `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}…\n💀 失敗！\n${targetName}がスタートに戻った！`;
+                if (originalIndex !== null) {
+                    // 他プレイヤーへの使用: 対象のタイル効果を適用し、元のプレイヤーからターンを進める
+                    window.nextTurnOverrideIndex = originalIndex;
+                    gameState.currentPlayerIndex = targetIndex;
+                }
+                showModal('info', resultText, () => executeTileEffect(gameState.board[gameState.players[gameState.currentPlayerIndex].position]));
+            };
 
-            if (roll === 1) {
-                const destPos = Math.max(0, maxPos - 1);
-                target.position = destPos;
-                renderBoard();
-                updateStatus();
-                showModal('info', `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}！\n🎉 大成功！\n${targetName}がゴール1マス前へワープした！`, () => doRollDice());
+            if (isMe) {
+                // 自分に使う: 自動アニメーション → 結果 → タイル効果
+                startMorohajokenAnimation((roll) => applyRollResult(roll, null));
             } else {
-                target.position = 0;
-                renderBoard();
-                updateStatus();
-                showModal('info', `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}…\n💀 失敗！\n${targetName}がスタートに戻った！`, () => doRollDice());
+                // 他プレイヤーへ使用
+                const originalIndex = gameState.currentPlayerIndex;
+                if (gameState.playMode === 'online') {
+                    // オンライン: Firebase経由で対象プレイヤーのデバイスに通知
+                    gameState.firebaseRefs.roomRef.child('uiAction').set({
+                        type: 'morohajoken_thrown',
+                        targetPlayerId: target.id,
+                        attackerPlayerId: gameState.playerId,
+                        targetPlayerIndex: targetIndex,
+                        originalPlayerIndex: originalIndex
+                    });
+                } else {
+                    // ローカル: デバイスを渡して対象が振る
+                    showModal('info', `🗡️ ${escapeHtml(target.name)}に諸刃の剣を投げつけた！\nデバイスを${escapeHtml(target.name)}に渡してください。`, () => {
+                        showMorohajokenThrownUI(target.name, (roll) => applyRollResult(roll, originalIndex));
+                    });
+                }
             }
+        }
+
+        // 100面ダイス自動アニメーション（自分使用時）
+        function startMorohajokenAnimation(callback) {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">🗡️ 100面ダイス！</div>
+                <div id="morohajokenDiceVal" style="font-size:4rem;font-weight:bold;margin:16px 0;color:#764ba2;">?</div>
+            `;
+            modal.classList.add('show');
+            const diceEl = document.getElementById('morohajokenDiceVal');
+            const roll = Math.floor(Math.random() * 100) + 1;
+            let count = 0;
+            const interval = setInterval(() => {
+                diceEl.textContent = Math.floor(Math.random() * 100) + 1;
+                count++;
+                if (count >= 15) {
+                    clearInterval(interval);
+                    diceEl.textContent = roll;
+                    setTimeout(() => {
+                        closeModal();
+                        callback(roll);
+                    }, 800);
+                }
+            }, 80);
+        }
+
+        // 投げつけられた側のUI（対象プレイヤーが振るボタンを押す）
+        function showMorohajokenThrownUI(targetName, callback) {
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            content.innerHTML = `
+                <div class="modal-title">🗡️ 諸刃の剣が投げつけられた！</div>
+                <div class="modal-text">${escapeHtml(targetName)}は100面ダイスを振ってください</div>
+                <div id="morohajokenDiceVal" style="font-size:4rem;font-weight:bold;margin:16px 0;color:#764ba2;display:none;"></div>
+                <button class="btn btn-danger" style="width:100%;margin-top:8px;" data-action="morohajokenRollThrown">🎲 100面ダイスを振る！</button>
+            `;
+            modal.classList.add('show');
+            window.morohajokenThrownCallback = callback;
+        }
+
+        function morohajokenRollThrown() {
+            const btn = document.querySelector('[data-action="morohajokenRollThrown"]');
+            if (btn) btn.disabled = true;
+            const diceEl = document.getElementById('morohajokenDiceVal');
+            if (diceEl) diceEl.style.display = '';
+            const roll = Math.floor(Math.random() * 100) + 1;
+            let count = 0;
+            const interval = setInterval(() => {
+                if (diceEl) diceEl.textContent = Math.floor(Math.random() * 100) + 1;
+                count++;
+                if (count >= 15) {
+                    clearInterval(interval);
+                    if (diceEl) diceEl.textContent = roll;
+                    setTimeout(() => {
+                        closeModal();
+                        const cb = window.morohajokenThrownCallback;
+                        window.morohajokenThrownCallback = null;
+                        if (cb) cb(roll);
+                    }, 800);
+                }
+            }, 80);
         }
 
         function doRollDice() {
@@ -2315,7 +2405,7 @@ API Key / Project ID / Database URL を取得して入力
             }
             const topPlayer = gameState.players[topIndex];
             if (topPlayer.items.includes('katashiro')) {
-                autoConsumeKatashiro(topIndex, '下剋上の効果', () => doRollDice());
+                autoConsumeKatashiro(topIndex, '下剋上の効果', () => nextTurn());
                 return;
             }
             applyGekokujoSwap(topIndex, false, topIndex);
@@ -2334,7 +2424,7 @@ API Key / Project ID / Database URL を取得して入力
             const katashiroNote = katashiroUsed
                 ? `\n形代が発動！${topName}が対象をすり替え、${topName}は${katashiroBackSteps}マス戻った。`
                 : '';
-            showModal('info', `下剋上発動！\n${target.name}と場所を交換した！\n${player.name}のアイテムはすべて失われた。${katashiroNote}`, () => doRollDice());
+            showModal('info', `下剋上発動！\n${target.name}と場所を交換した！\n${player.name}のアイテムはすべて失われた。${katashiroNote}`, () => executeTileEffect(gameState.board[gameState.players[gameState.currentPlayerIndex].position]));
         }
 
         // ========== 釘＋トンカチ コンボ ==========
@@ -2886,7 +2976,12 @@ API Key / Project ID / Database URL を取得して入力
         }
 
         function doNextTurn() {
-            gameState.currentPlayerIndex = (gameState.currentPlayerIndex + 1) % gameState.players.length;
+            // 諸刃の剣の他プレイヤー使用など、元のターンプレイヤーから正しく進めるためのオーバーライド
+            const baseIndex = (window.nextTurnOverrideIndex !== undefined)
+                ? window.nextTurnOverrideIndex
+                : gameState.currentPlayerIndex;
+            window.nextTurnOverrideIndex = undefined;
+            gameState.currentPlayerIndex = (baseIndex + 1) % gameState.players.length;
             updateStatus();
 
             if (gameState.playMode === 'online') {
@@ -3532,7 +3627,7 @@ API Key / Project ID / Database URL を取得して入力
                 case 'turn_notify':
                     if (action.nextPlayerId === gameState.playerId) {
                         roomRef.child('uiAction').remove();
-                        showModal('info', '', undefined, `${escapeHtml(action.playerName)}のターン！`);
+                        showModal('info', '', undefined, 'あなたのターン！');
                     }
                     break;
                 case 'self_appeal_vote':
@@ -3590,6 +3685,45 @@ API Key / Project ID / Database URL を取得して入力
                             updateStatus();
                             showModal('info', `${escapeHtml(tilePlayer.name)} は${action.steps}マス戻った...`, () => nextTurn(), '怒らなかった！');
                         }
+                    }
+                    break;
+                case 'morohajoken_thrown':
+                    // 対象プレイヤーのデバイスに届く: 振るUIを表示
+                    if (action.targetPlayerId === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        const thrownTarget = gameState.players[action.targetPlayerIndex];
+                        showMorohajokenThrownUI(thrownTarget?.name || '?', (roll) => {
+                            roomRef.child('uiAction').set({
+                                type: 'morohajoken_result',
+                                attackerPlayerId: action.attackerPlayerId,
+                                roll: roll,
+                                targetPlayerIndex: action.targetPlayerIndex,
+                                originalPlayerIndex: action.originalPlayerIndex
+                            });
+                        });
+                    }
+                    break;
+                case 'morohajoken_result':
+                    // 攻撃者のデバイスに届く: 結果を処理してターン続行
+                    if (action.attackerPlayerId === gameState.playerId) {
+                        roomRef.child('uiAction').remove();
+                        const maxPos = gameState.board.length - 1;
+                        const resultTarget = gameState.players[action.targetPlayerIndex];
+                        const resultTargetName = escapeHtml(resultTarget?.name || '?');
+                        const roll = action.roll;
+                        if (roll === 1) {
+                            resultTarget.position = Math.max(0, maxPos - 1);
+                        } else {
+                            resultTarget.position = 0;
+                        }
+                        renderBoard();
+                        updateStatus();
+                        const resultText = roll === 1
+                            ? `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}！\n🎉 大成功！\n${resultTargetName}がゴール1マス前へワープした！`
+                            : `🗡️ 諸刃の剣！\n100面ダイスの結果：${roll}…\n💀 失敗！\n${resultTargetName}がスタートに戻った！`;
+                        window.nextTurnOverrideIndex = action.originalPlayerIndex;
+                        gameState.currentPlayerIndex = action.targetPlayerIndex;
+                        showModal('info', resultText, () => executeTileEffect(gameState.board[gameState.players[gameState.currentPlayerIndex].position]));
                     }
                     break;
             }
@@ -3885,6 +4019,7 @@ const ACTION_HANDLERS = {
     freeMoveSubmit: () => freeMoveSubmit(),
     luckyNumberSubmit: () => luckyNumberSubmit(),
     morohajokenTarget: (el) => morohajokenTarget(Number(el.dataset.idx)),
+    morohajokenRollThrown: () => morohajokenRollThrown(),
     selfAppealShowVoteDialog: () => selfAppealShowVoteDialog(),
     angryPassDeviceConfirm: (el) => { closeModal(); showAngryDialog(Number(el.dataset.idx)); },
 };
