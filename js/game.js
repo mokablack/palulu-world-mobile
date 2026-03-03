@@ -1340,6 +1340,9 @@ API Key / Project ID / Database URL を取得して入力
                     if (itemId === 'gekokujo') {
                         return findTopOpponentIndex(gameState.currentPlayerIndex) !== -1;
                     }
+                    if (itemId === 'kagemaiha') {
+                        return gameState.players.some((p, i) => i !== gameState.currentPlayerIndex && p.position > player.position);
+                    }
                     return true;
                 });
 
