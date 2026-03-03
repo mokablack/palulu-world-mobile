@@ -3614,7 +3614,7 @@ API Key / Project ID / Database URL を取得して入力
             const modal = document.getElementById('modal');
             modal.classList.remove('show');
 
-            const roll = Math.floor(Math.random() * 4);
+            const roll = Math.floor(Math.random() * 3);
             if (roll === 0) {
                 // 入力数値分 前進
                 let newPos = player.position + num;
@@ -3624,14 +3624,6 @@ API Key / Project ID / Database URL を取得して入力
                 updateStatus();
                 showModal('info', `ラッキー！${num}マス前進した！`, () => nextTurn(), '今日のラッキーナンバーは？');
             } else if (roll === 1) {
-                // 入力数値分 後退
-                let newPos = player.position - num;
-                if (newPos < 0) newPos = 0;
-                player.position = newPos;
-                renderBoard();
-                updateStatus();
-                showModal('info', `残念！${num}マス後退した...`, () => nextTurn(), '今日のラッキーナンバーは？');
-            } else if (roll === 2) {
                 // 自分以外が入力数値分後退
                 gameState.players.forEach((p, i) => {
                     if (i !== gameState.currentPlayerIndex) {
