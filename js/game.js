@@ -26,9 +26,15 @@
             { id: 'katashiro',  name: '形代',             icon: '🪆', effect: '他プレイヤーから自分への攻撃アイテム効果を選択したプレイヤーに押し付ける。使用後1〜3マス戻る' },
             { id: 'gekokujo',   name: '下剋上',           icon: '⚔️', effect: 'アイテムを全て失う代わりにトップのプレイヤーと場所を交換する' },
             { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' },
-            { id: 'morohajoken', name: '諸刃の剣',         icon: '🗡️', effect: '100面ダイスを振る。1が出ればゴール1マス前へワープ、それ以外はスタートへ戻る。同マスの他プレイヤーにも使用可能' }
+            { id: 'morohajoken', name: '諸刃の剣',         icon: '🗡️', effect: '100面ダイスを振る。1が出ればゴール1マス前へワープ、それ以外はスタートへ戻る。同マスの他プレイヤーにも使用可能' },
+            { id: 'snake',       name: '蛇',               icon: '🐍', effect: 'マスに設置。他プレイヤーが止まるとスタート方向の普通マスへワープさせる。盾・形代・免疫で無効化可' }
         ];
         
+        const SNAKE_COLORS = [
+            '#2d6a4f', '#40916c', '#52b788', '#74c69d', '#95d5b2',
+            '#1b4332', '#6a994e', '#a7c957', '#386641', '#606c38'
+        ];
+
         // アイテム表示ラベル（アイコン + 名前）
         function itemLabel(itemId) {
             if (itemId === 'hito_katashiro') return '🪆 他人の形代';
@@ -99,7 +105,8 @@
             koshindoActive: false,
             sakasamaActive: false,
             winShown: false,
-            nailTraps: {}     // { [tileIndex]: placingPlayerIndex }
+            nailTraps: {},    // { [tileIndex]: placingPlayerIndex }
+            snakeTraps: {}    // { [tileIndex]: { targetTileIndex, colorIndex, playerIndex } }
         };
         
         // ========== 初期化 ==========
@@ -382,6 +389,34 @@
                     nailIcon.style.cssText = 'position:absolute;top:2px;left:2px;font-size:10px;line-height:1;';
                     nailIcon.textContent = '📌';
                     div.appendChild(nailIcon);
+                }
+
+                // 蛇トラップ表示（設置元マス）
+                if (gameState.snakeTraps && gameState.snakeTraps[index] !== undefined) {
+                    const trap = gameState.snakeTraps[index];
+                    const color = SNAKE_COLORS[trap.colorIndex % SNAKE_COLORS.length];
+                    const overlay = document.createElement('div');
+                    overlay.style.cssText = `position:absolute;inset:0;background:${color};opacity:0.45;border-radius:inherit;pointer-events:none;`;
+                    div.appendChild(overlay);
+                    const snakeIcon = document.createElement('i');
+                    snakeIcon.className = 'fa-solid fa-worm';
+                    snakeIcon.style.cssText = 'position:absolute;top:2px;right:2px;font-size:11px;color:rgba(255,255,255,0.95);text-shadow:0 0 3px rgba(0,0,0,0.8);';
+                    div.appendChild(snakeIcon);
+                }
+
+                // 蛇トラップ移動先ドット表示
+                if (gameState.snakeTraps) {
+                    Object.values(gameState.snakeTraps).forEach(trap => {
+                        if (trap.targetTileIndex === index) {
+                            const color = SNAKE_COLORS[trap.colorIndex % SNAKE_COLORS.length];
+                            const destOverlay = document.createElement('div');
+                            destOverlay.style.cssText = `position:absolute;inset:0;background:${color};opacity:0.25;border-radius:inherit;pointer-events:none;`;
+                            div.appendChild(destOverlay);
+                            const dot = document.createElement('span');
+                            dot.style.cssText = `position:absolute;bottom:2px;right:2px;width:8px;height:8px;border-radius:50%;background:${color};display:inline-block;`;
+                            div.appendChild(dot);
+                        }
+                    });
                 }
 
                 if (gameState.mode === 'editor') {
@@ -797,6 +832,7 @@
             gameState.playMode = 'single';
             gameState.winShown = false;
             gameState.nailTraps = {};
+            gameState.snakeTraps = {};
             gameState.players = [{
                 name: 'プレイヤー',
                 position: 0,
@@ -818,6 +854,7 @@
             gameState.playMode = 'local';
             gameState.winShown = false;
             gameState.nailTraps = {};
+            gameState.snakeTraps = {};
             gameState.players = [];
 
             for (let i = 0; i < count; i++) {
@@ -1010,6 +1047,7 @@
                     id, name: p.name, position: 0, items: [], skipTurns: 0, babelTarget: null, immuneTurns: 0
                 }));
                 gameState.nailTraps = {};
+                gameState.snakeTraps = {};
 
                 if (playersForGame.length < 2) {
                     showModal('info', '2人以上のプレイヤーが必要です。');
@@ -1448,7 +1486,7 @@ API Key / Project ID / Database URL を取得して入力
                 player.position = destPos;
                 renderBoard();
                 updateStatus();
-                promptNailThenEffect(destPos);
+                promptSnakeThenNail(destPos);
             });
         }
 
@@ -1715,7 +1753,7 @@ API Key / Project ID / Database URL を取得して入力
                         // 折り返しまたは通常着地
                         setTimeout(() => {
                             if (!checkBlackholeAdjacency(currentPos) && !checkWhiteholeAdjacency(currentPos)) {
-                                promptNailThenEffect(currentPos);
+                                promptSnakeThenNail(currentPos);
                             }
                         }, 300);
                     }
@@ -2512,6 +2550,150 @@ API Key / Project ID / Database URL を取得して入力
             window.nailCallback();
         }
 
+        // ========== 蛇の設置・発動 ==========
+        function promptSnakeThenNail(position) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+
+            // 1) 蛇トラップ発動チェック（他プレイヤーが設置、自分が着地）
+            if (gameState.snakeTraps && gameState.snakeTraps[position] !== undefined) {
+                const trap = gameState.snakeTraps[position];
+                if (trap.playerIndex !== gameState.currentPlayerIndex) {
+                    triggerSnakeTrap(position, trap);
+                    return;
+                }
+            }
+
+            // 2) 蛇設置チェック（自分が蛇を持っていてSTART/GOAL以外かつ前方に普通マスがある）
+            const snakeIdx = player.items.indexOf('snake');
+            if (snakeIdx !== -1) {
+                const tile = gameState.board[position];
+                const normalsBefore = gameState.board
+                    .slice(0, position)
+                    .map((t, i) => ({ t, i }))
+                    .filter(({ t }) => t.id === 'normal');
+                const canPlace = tile && tile.id !== 'start' && tile.id !== 'goal'
+                    && !(gameState.snakeTraps && gameState.snakeTraps[position] !== undefined)
+                    && normalsBefore.length > 0;
+                if (canPlace) {
+                    const targetIdx = normalsBefore[Math.floor(Math.random() * normalsBefore.length)].i;
+                    promptSnakePlacement(snakeIdx, position, targetIdx, () => promptNailThenEffect(position));
+                    return;
+                }
+            }
+
+            // 3) それ以外は釘→コシンド→タイル効果チェーンへ
+            promptNailThenEffect(position);
+        }
+
+        function triggerSnakeTrap(position, trap) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const trapperName = gameState.players[trap.playerIndex]?.name || '誰か';
+
+            // 形代チェック
+            if (player.items.includes('katashiro')) {
+                renderBoard();
+                autoConsumeKatashiro(gameState.currentPlayerIndex, '蛇の効果', () => {
+                    promptNailThenEffect(position);
+                });
+                return;
+            }
+
+            // 免疫チェック
+            if (player.immuneTurns > 0) {
+                renderBoard();
+                showModal('info', `免疫効果で蛇トラップが無効化された！\n${trapperName}が設置した蛇を回避！`, () => {
+                    promptNailThenEffect(position);
+                });
+                return;
+            }
+
+            // 盾チェック
+            const shieldIdx = player.items.indexOf('shield');
+            if (shieldIdx !== -1) {
+                window.snakeTrapData = { position, trap, shieldIdx };
+                const modal = document.getElementById('modal');
+                const content = document.getElementById('modalContent');
+                content.innerHTML = `
+                    <div class="modal-title">蛇トラップ発動！</div>
+                    <div class="modal-text">${escapeHtml(trapperName)}が設置した蛇！<br>スタート方向の普通マスへワープさせられる。<br>🛡️ 盾を使って無効化しますか？</div>
+                    <button class="btn btn-primary" data-action="useShieldForSnake">盾を使う（無効化）</button>
+                    <button class="btn btn-danger" style="margin-top:8px;width:100%;" data-action="applySnakeTrapEffect">使わない（ワープ）</button>
+                `;
+                modal.classList.add('show');
+                return;
+            }
+
+            // 通常発動
+            applySnakeTrap(position, trap);
+        }
+
+        function promptSnakePlacement(snakeIdx, pos, targetIdx, cb) {
+            window.snakePlacementData = { snakeIdx, pos, targetIdx, cb };
+            const modal = document.getElementById('modal');
+            const content = document.getElementById('modalContent');
+            const tileName = gameState.board[pos]?.name || 'このマス';
+            const targetName = gameState.board[targetIdx]?.name || `${targetIdx + 1}マス目`;
+            content.innerHTML = `
+                <div class="modal-title">蛇の設置</div>
+                <div class="modal-text">「${escapeHtml(tileName)}」に蛇を設置しますか？<br>他プレイヤーが止まると「${escapeHtml(targetName)}」（${targetIdx + 1}マス目）へワープさせます。</div>
+                <button class="btn btn-primary" data-action="confirmSnakePlacement">設置する</button>
+                <button class="btn btn-secondary" style="margin-top:8px;width:100%;" data-action="cancelSnakePlacement">設置しない</button>
+            `;
+            modal.classList.add('show');
+        }
+
+        function confirmSnakePlacement() {
+            const { snakeIdx, pos, targetIdx } = window.snakePlacementData || {};
+            if (pos === undefined) return;
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(snakeIdx, 1);
+            if (!gameState.snakeTraps) gameState.snakeTraps = {};
+            const colorIndex = Object.keys(gameState.snakeTraps).length % SNAKE_COLORS.length;
+            gameState.snakeTraps[pos] = { targetTileIndex: targetIdx, colorIndex, playerIndex: gameState.currentPlayerIndex };
+            window.snakePlacementData = null;
+            updateStatus();
+            renderBoard();
+            closeModal();
+            nextTurn();
+        }
+
+        function cancelSnakePlacement() {
+            const cb = window.snakePlacementData?.cb;
+            window.snakePlacementData = null;
+            closeModal();
+            if (cb) cb();
+        }
+
+        function applySnakeTrap(position, trap) {
+            const player = gameState.players[gameState.currentPlayerIndex];
+            const trapperName = gameState.players[trap.playerIndex]?.name || '誰か';
+            const targetIdx = trap.targetTileIndex;
+            player.position = targetIdx;
+            renderBoard();
+            updateStatus();
+            showModal('info', `🐍 ${escapeHtml(trapperName)}が設置した蛇に捕まった！\n${targetIdx + 1}マス目へワープ！`, () => nextTurn());
+        }
+
+        function useShieldForSnake() {
+            const { position, trap, shieldIdx } = window.snakeTrapData || {};
+            if (position === undefined) return;
+            const player = gameState.players[gameState.currentPlayerIndex];
+            player.items.splice(shieldIdx, 1);
+            window.snakeTrapData = null;
+            updateStatus();
+            renderBoard();
+            closeModal();
+            showModal('info', '🛡️ 盾を使った！\n蛇トラップを無効化した！', () => promptNailThenEffect(position));
+        }
+
+        function applySnakeTrapEffect() {
+            const { position, trap } = window.snakeTrapData || {};
+            if (position === undefined) return;
+            window.snakeTrapData = null;
+            closeModal();
+            applySnakeTrap(position, trap);
+        }
+
         function executeTileEffect(tile) {
             const player = gameState.players[gameState.currentPlayerIndex];
 
@@ -3184,6 +3366,7 @@ API Key / Project ID / Database URL を取得して入力
             gameState.currentPlayerIndex = 0;
             gameState.winShown = false;
             gameState.nailTraps = {};
+            gameState.snakeTraps = {};
             gameState.bootsActive = false;
             gameState.binocularsActive = false;
             gameState.koshindoActive = false;
@@ -4008,6 +4191,10 @@ const ACTION_HANDLERS = {
     katashiroRedirectTarget: (el) => katashiroRedirectTarget(Number(el.dataset.idx)),
     destroyDollOf: (el) => destroyDollOf(Number(el.dataset.idx)),
     confirmNailPlacement: (el) => confirmNailPlacement(Number(el.dataset.nailIdx), Number(el.dataset.pos)),
+    confirmSnakePlacement: () => confirmSnakePlacement(),
+    cancelSnakePlacement: () => cancelSnakePlacement(),
+    useShieldForSnake: () => useShieldForSnake(),
+    applySnakeTrapEffect: () => applySnakeTrapEffect(),
     merchantPickItem: (el) => merchantPickItem(el.dataset.itemId),
     merchantTradeGiveItem: (el) => merchantTradeGiveItem(Number(el.dataset.idx)),
     merchantSelectItem: (el) => merchantSelectItem(el.dataset.itemId),
