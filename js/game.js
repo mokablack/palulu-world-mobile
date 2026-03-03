@@ -11,7 +11,7 @@
         };
         
         const ITEMS = [
-            { id: 'boots',      name: '魔法の靴',         icon: '👟', effect: '次のターン移動量+2' },
+            { id: 'boots',      name: '魔法の靴',         icon: '👟', effect: 'サイコロを振って移動後、さらに2マス進む。2マス目のマスの効果を受ける' },
             { id: 'shield',     name: '盾',               icon: '🛡️', effect: '戻るマスの効果を1回無効化' },
             { id: 'binoculars', name: '双眼鏡',           icon: '🔭', effect: 'サイコロを2回振り好きな目を選べる' },
             { id: 'timestop',   name: 'タイムストップ',   icon: '⏸️', effect: '自分以外の全プレイヤーが1ターン休み' },
@@ -1390,7 +1390,7 @@ API Key / Project ID / Database URL を取得して入力
             switch (itemId) {
                 case 'boots':
                     gameState.bootsActive = true;
-                    showModal('info', `${itemLabel('boots')} を使った！\n移動量に+2される！`, () => doRollDice());
+                    showModal('info', `${itemLabel('boots')} を使った！\nサイコロを振って移動後、さらに2マス進む！`, () => doRollDice());
                     break;
                 case 'binoculars':
                     gameState.binocularsActive = true;
@@ -1661,10 +1661,6 @@ API Key / Project ID / Database URL を取得して入力
 
             setTimeout(() => {
                 let result = Math.floor(Math.random() * 6) + 1;
-                if (gameState.bootsActive) {
-                    result += 2;
-                    gameState.bootsActive = false;
-                }
                 const rollingPlayer = gameState.players[gameState.currentPlayerIndex];
                 if (rollingPlayer && rollingPlayer.items.includes('hito_katashiro')) {
                     result = Math.max(1, result - 2);
@@ -1753,7 +1749,21 @@ API Key / Project ID / Database URL を取得して入力
                         // 折り返しまたは通常着地
                         setTimeout(() => {
                             if (!checkBlackholeAdjacency(currentPos) && !checkWhiteholeAdjacency(currentPos)) {
-                                promptSnakeThenNail(currentPos);
+                                if (gameState.bootsActive) {
+                                    gameState.bootsActive = false;
+                                    showModal('info', `${itemLabel('boots')} の効果！\nさらに2マス進む！`, () => {
+                                        animateTileMove(2, () => {
+                                            const p = gameState.players[gameState.currentPlayerIndex];
+                                            if (p.position >= gameState.board.length - 1) {
+                                                triggerWin();
+                                                return;
+                                            }
+                                            promptSnakeThenNail(p.position);
+                                        });
+                                    });
+                                } else {
+                                    promptSnakeThenNail(currentPos);
+                                }
                             }
                         }, 300);
                     }
@@ -2032,22 +2042,39 @@ API Key / Project ID / Database URL を取得して入力
             showModal('info', 'コシンドスプレーを使った！\nマスの効果を無効化した！', () => nextTurn());
         }
 
-        function applyMoveEffect(moveValue) {
+        function animateTileMove(moveValue, callback) {
             const player = gameState.players[gameState.currentPlayerIndex];
+            const maxPos = gameState.board.length - 1;
+            const targetPos = Math.max(0, Math.min(maxPos, player.position + moveValue));
+            const dir = targetPos > player.position ? 1 : targetPos < player.position ? -1 : 0;
+            let remaining = Math.abs(targetPos - player.position);
+            if (remaining === 0) { callback(); return; }
+            function step() {
+                player.position += dir;
+                remaining--;
+                renderBoard();
+                updateStatus();
+                if (remaining === 0) {
+                    callback();
+                } else {
+                    setTimeout(step, 150);
+                }
+            }
+            setTimeout(step, 150);
+        }
+
+        function applyMoveEffect(moveValue) {
             showModal('info',
                 moveValue > 0 ? `${Math.abs(moveValue)}マス進む！` : `${Math.abs(moveValue)}マス戻る...`,
                 () => {
-                    let newPos = player.position + moveValue;
-                    if (newPos < 0) newPos = 0;
-                    if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
-                    player.position = newPos;
-                    renderBoard();
-                    updateStatus();
-                    if (newPos >= gameState.board.length - 1) {
-                        triggerWin();
-                        return;
-                    }
-                    nextTurn();
+                    animateTileMove(moveValue, () => {
+                        const player = gameState.players[gameState.currentPlayerIndex];
+                        if (player.position >= gameState.board.length - 1) {
+                            triggerWin();
+                            return;
+                        }
+                        nextTurn();
+                    });
                 }
             );
         }
@@ -3148,6 +3175,7 @@ API Key / Project ID / Database URL を取得して入力
 
         function nextTurn() {
             if (gameState.playMode === 'single') return;
+            gameState.bootsActive = false; // セーフティクリア（釘停止など正常消費されなかった場合）
 
             // 免疫ターンのデクリメント（今終わったターンのプレイヤー）
             const currentPlayer = gameState.players[gameState.currentPlayerIndex];
