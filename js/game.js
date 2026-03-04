@@ -27,7 +27,7 @@
             { id: 'gekokujo',   name: '下剋上',           icon: '⚔️', effect: 'アイテムを全て失う代わりにトップのプレイヤーと場所を交換する' },
             { id: 'kagemaiha',  name: '影舞葉',           icon: '🍃', effect: '1つ上の順位のプレイヤーのマスに移動。サイコロは振れず、そのマスの効果を受ける' },
             { id: 'morohajoken', name: '諸刃の剣',         icon: '🗡️', effect: '100面ダイスを振る。1が出ればゴール1マス前へワープ、それ以外はスタートへ戻る。同マスの他プレイヤーにも使用可能' },
-            { id: 'snake',       name: '蛇',               icon: '🐍', effect: 'マスに設置。他プレイヤーが止まるとスタート方向の普通マスへワープさせる。盾・形代・免疫で無効化可' }
+            { id: 'snake',       name: '蛇',               icon: '🐍', effect: 'マスに設置。他プレイヤーが止まると設置マスより前のランダムなマスへワープさせ、そのマスの効果を受ける' }
         ];
         
         const SNAKE_COLORS = [
@@ -71,7 +71,7 @@
             { id: 'angry', title: '怒らせたら10進む', text: 'ランダムなプレイヤーを怒らせることができるか？', effect: 'angry' },
             { id: 'self_appeal', title: '自分をアピールして！', text: '30秒で自己アピールして他プレイヤーの採用を勝ち取れ！', effect: 'self_appeal' },
             { id: 'freemove', title: '好きなだけ進んでいいよ', text: '好きなだけ進んでいいよ！何マス進む？', effect: 'freemove' },
-            { id: 'luckynumber', title: '今日のラッキーナンバーは？', text: 'ラッキーナンバーを入力してください！', effect: 'luckynumber' }
+            { id: 'luckynumber', title: 'ラッキーナンバー', text: 'ラッキーナンバーを入力してください！', effect: 'luckynumber' }
         ];
         
         // ========== ゲーム状態 ==========
@@ -1892,7 +1892,7 @@ API Key / Project ID / Database URL を取得して入力
                     player.position = whiteholeTileIndex;
                     renderBoard();
                     updateStatus();
-                    showModal('info', `ホワイトホールから吐き出された！`, () => nextTurn());
+                    showModal('info', `ホワイトホールから吐き出された！`, () => promptSnakeThenNail(whiteholeTileIndex));
                 } else {
                     showModal('info', `ブラックホールに吸い込まれたが、ホワイトホールが存在しない...何も起きなかった。`, () => nextTurn());
                 }
@@ -2593,19 +2593,18 @@ API Key / Project ID / Database URL を取得して入力
                 }
             }
 
-            // 2) 蛇設置チェック（自分が蛇を持っていてSTART/GOAL以外かつ前方に普通マスがある）
+            // 2) 蛇設置チェック（自分が蛇を持っていてSTART/GOAL以外かつ前方にマスがある）
             const snakeIdx = player.items.indexOf('snake');
             if (snakeIdx !== -1) {
                 const tile = gameState.board[position];
-                const normalsBefore = gameState.board
+                const tilesBefore = gameState.board
                     .slice(0, position)
-                    .map((t, i) => ({ t, i }))
-                    .filter(({ t }) => t.id === 'normal');
+                    .map((t, i) => ({ t, i }));
                 const canPlace = tile && tile.id !== 'start' && tile.id !== 'goal'
                     && !(gameState.snakeTraps && gameState.snakeTraps[position] !== undefined)
-                    && normalsBefore.length > 0;
+                    && tilesBefore.length > 0;
                 if (canPlace) {
-                    const targetIdx = normalsBefore[Math.floor(Math.random() * normalsBefore.length)].i;
+                    const targetIdx = tilesBefore[Math.floor(Math.random() * tilesBefore.length)].i;
                     promptSnakePlacement(snakeIdx, position, targetIdx, () => promptNailThenEffect(position));
                     return;
                 }
@@ -2645,7 +2644,7 @@ API Key / Project ID / Database URL を取得して入力
                 const content = document.getElementById('modalContent');
                 content.innerHTML = `
                     <div class="modal-title">蛇トラップ発動！</div>
-                    <div class="modal-text">${escapeHtml(trapperName)}が設置した蛇！<br>スタート方向の普通マスへワープさせられる。<br>🛡️ 盾を使って無効化しますか？</div>
+                    <div class="modal-text">${escapeHtml(trapperName)}が設置した蛇！<br>設置マスより前のランダムなマスへワープさせられる。<br>🛡️ 盾を使って無効化しますか？</div>
                     <button class="btn btn-primary" data-action="useShieldForSnake">盾を使う（無効化）</button>
                     <button class="btn btn-danger" style="margin-top:8px;width:100%;" data-action="applySnakeTrapEffect">使わない（ワープ）</button>
                 `;
@@ -2701,7 +2700,7 @@ API Key / Project ID / Database URL を取得して入力
             player.position = targetIdx;
             renderBoard();
             updateStatus();
-            showModal('info', `🐍 ${escapeHtml(trapperName)}が設置した蛇に捕まった！\n${targetIdx + 1}マス目へワープ！`, () => nextTurn());
+            showModal('info', `🐍 ${escapeHtml(trapperName)}が設置した蛇に捕まった！\n${targetIdx + 1}マス目へワープ！`, () => promptNailThenEffect(targetIdx));
         }
 
         function useShieldForSnake() {
@@ -2932,17 +2931,14 @@ API Key / Project ID / Database URL を取得して入力
                     callback = () => nextTurn();
                 } else {
                     callback = () => {
-                        let newPos = player.position + moveVal;
-                        if (newPos < 0) newPos = 0;
-                        if (newPos >= gameState.board.length) newPos = gameState.board.length - 1;
-                        player.position = newPos;
-                        renderBoard();
-                        updateStatus();
-                        if (newPos >= gameState.board.length - 1) {
-                            triggerWin();
-                            return;
-                        }
-                        executeTileEffect(gameState.board[newPos]);
+                        animateTileMove(moveVal, () => {
+                            const p = gameState.players[gameState.currentPlayerIndex];
+                            if (p.position >= gameState.board.length - 1) {
+                                triggerWin();
+                                return;
+                            }
+                            executeTileEffect(gameState.board[p.position]);
+                        });
                     };
                 }
             } else if (eventEffect.eventEffect === 'storm' && gameState.players.length > 1) {
@@ -3012,11 +3008,9 @@ API Key / Project ID / Database URL を取得して入力
                 } else {
                     callback = () => {
                         const steps = player.name.length;
-                        const newPos = Math.max(0, player.position - steps);
-                        player.position = newPos;
-                        renderBoard();
-                        updateStatus();
-                        showModal('info', `${player.name}は${steps}文字！${steps}マス戻った...`, () => nextTurn());
+                        animateTileMove(-steps, () => {
+                            showModal('info', `${player.name}は${steps}文字！${steps}マス戻った...`, () => nextTurn());
+                        });
                     };
                 }
             } else if (eventEffect.eventEffect === 'resetall') {
@@ -3592,7 +3586,7 @@ API Key / Project ID / Database URL を取得して入力
             const player = gameState.players[gameState.currentPlayerIndex];
 
             content.innerHTML = `
-                <div class="modal-title">🍀 今日のラッキーナンバーは？</div>
+                <div class="modal-title">🍀 ラッキーナンバー</div>
                 <div class="modal-text"><strong>${escapeHtml(player.name)}</strong> さん、ラッキーナンバーを入力してください！</div>
                 <div style="margin:16px 0;display:flex;align-items:center;justify-content:center;gap:8px;">
                     <input type="number" id="luckyNumberInput" min="1" max="99" value="7"
@@ -3622,7 +3616,7 @@ API Key / Project ID / Database URL を取得して入力
                 player.position = newPos;
                 renderBoard();
                 updateStatus();
-                showModal('info', `ラッキー！${num}マス前進した！`, () => nextTurn(), '今日のラッキーナンバーは？');
+                showModal('info', `ラッキー！${num}マス前進した！`, () => nextTurn(), 'ラッキーナンバー');
             } else if (roll === 1) {
                 // 自分以外が入力数値分後退
                 gameState.players.forEach((p, i) => {
@@ -3632,10 +3626,10 @@ API Key / Project ID / Database URL を取得して入力
                 });
                 renderBoard();
                 updateStatus();
-                showModal('info', `他の全員が${num}マス後退した！`, () => nextTurn(), '今日のラッキーナンバーは？');
+                showModal('info', `他の全員が${num}マス後退した！`, () => nextTurn(), 'ラッキーナンバー');
             } else {
                 // ふーん（何も起きない）
-                showModal('info', 'ふーん', () => nextTurn(), '今日のラッキーナンバーは？');
+                showModal('info', 'ふーん', () => nextTurn(), 'ラッキーナンバー');
             }
         }
 
