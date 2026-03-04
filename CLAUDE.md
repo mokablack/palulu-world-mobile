@@ -92,13 +92,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 2\. \*\*計画を確認する\*\*：実装を開始する前に確認する
 
-3\. \*\*進捗を記録する\*\*：完了した項目を随時マークしていく
+3\. \*\*コーディングする\*\*：codexを使って実装する
 
-4\. \*\*変更を説明する\*\*：各ステップで高レベルのサマリーを提供する
+4\. \*\*進捗を記録する\*\*：完了した項目を随時マークしていく
 
-5\. \*\*結果をドキュメント化する\*\*：`tasks/todo.md` にレビューセクションを追加する
+5\. \*\*変更を説明する\*\*：各ステップで高レベルのサマリーを提供する
 
-6\. \*\*学びを記録する\*\*：修正を受けた後に `tasks/lessons.md` を更新する
+6\. \*\*結果をドキュメント化する\*\*：`tasks/todo.md` にレビューセクションを追加する
+
+7\. \*\*学びを記録する\*\*：修正を受けた後に `tasks/lessons.md` を更新する
 
 
 
@@ -177,7 +179,7 @@ tasks/
 16. 逆さまスプレー / コシンドスプレー / バベル / 呪われた人形 / スナッチャー / トンカチ / 形代＋下剋上ハンドラ / 釘＋トンカチコンボ / 釘の設置 / 諸刃の剣 (`morohajokenTarget()`) (per-item handlers)
 17. 怪しい商人UI — `showMerchantDialog()` and related
 18. モーダル — `showModal()`, `buildResultText()`, `nextTurn()`
-19. 自分をアピールして！ / 好きなだけ進んでいいよ / 今日のラッキーナンバーは？ / 怒らせたら10進む (custom event UIs)
+19. 自分をアピールして！ / 好きなだけ進んでいいよ / ラッキーナンバー / 怒らせたら10進む (custom event UIs)
 20. イベント委譲ディスパッチャー — `closeModal*` bridge functions, `ACTION_HANDLERS`, `document.addEventListener('click', ...)`, `init()` call
 
 ---
