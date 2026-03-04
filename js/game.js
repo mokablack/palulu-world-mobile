@@ -342,7 +342,7 @@
                 const div = document.createElement('div');
                 div.className = `tile ${tile.color}`;
                 
-                let label = tile.name;
+                let label = escapeHtml(tile.name);
                 if (tile.id === 'normal') {
                     label = '';
                 } else if (tile.effect?.type === 'move' && tile.effect.value) {
@@ -364,7 +364,7 @@
                     div.classList.add('tile-average');
                     label = '<i class="fa-solid fa-scale-balanced tile-icon tile-icon-average"></i>';
                 } else if (tile.effect?.eventTitle) {
-                    label = tile.effect.eventTitle;
+                    label = escapeHtml(tile.effect.eventTitle);
                 }
                 
                 div.innerHTML = `
@@ -699,6 +699,15 @@
                 localStorage.removeItem(`stageData_${slot}`);
                 closeModal();
                 showModal('info', `スロット ${slot} のデータが破損していたため削除しました。`);
+                return;
+            }
+            const { rows, cols } = stageData.gridSize;
+            const clampedRows = Math.max(3, Math.min(10, Math.floor(rows)));
+            const clampedCols = Math.max(3, Math.min(10, Math.floor(cols)));
+            if (clampedRows !== rows || clampedCols !== cols || !Array.isArray(stageData.board) || stageData.board.length !== clampedRows * clampedCols) {
+                localStorage.removeItem(`stageData_${slot}`);
+                closeModal();
+                showModal('info', `スロット ${slot} のデータが不正なため削除しました。`);
                 return;
             }
             gameState.gridSize = stageData.gridSize;
@@ -1098,7 +1107,7 @@
     "rooms": {
       "$roomId": {
         ".read": "auth != null",
-        ".write": "auth != null && (!data.exists() || data.child('hostId').val() === auth.uid || data.child('players').child(auth.uid).exists())",
+        ".write": "auth != null && !data.exists()",
         "status":       { ".write": "auth != null && (data.parent().child('hostId').val() === auth.uid || !data.parent().exists())" },
         "winner":       { ".write": "auth != null && data.parent().child('hostId').val() === auth.uid" },
         "gameSnapshot": { ".write": "auth != null && data.parent().child('hostId').val() === auth.uid" },
@@ -1162,6 +1171,14 @@ API Key / Project ID / Database URL を取得して入力
                     return;
                 }
                 if (!saved || !Array.isArray(saved.players)) return;
+                const playerCount = saved.players.length;
+                if (playerCount === 0 || typeof saved.currentPlayerIndex !== 'number'
+                    || saved.currentPlayerIndex < 0 || saved.currentPlayerIndex >= playerCount) {
+                    return;
+                }
+                if (!saved.players.every(p => typeof p.name === 'string' && typeof p.position === 'number' && p.position >= 0)) {
+                    return;
+                }
                 gameState.board = boardData;
                 gameState.gridSize = gridSize;
                 gameState.players = saved.players;
@@ -1224,6 +1241,14 @@ API Key / Project ID / Database URL を取得して入力
                 const status = snap.val();
                 if (status === 'abandoned' && gameState.mode === 'play' && !gameState.isHost) {
                     showModal('info', 'ホストがゲームを終了しました。\nルームへの参加画面に戻ります。', () => {
+                        const rf = gameState.firebaseRefs.roomRef;
+                        if (rf) {
+                            rf.child('gameSnapshot').off();
+                            rf.child('winner').off();
+                            rf.child('uiAction').off();
+                            rf.child('status').off();
+                            rf.child('players').off();
+                        }
                         gameState.playMode = null;
                         gameState.roomId = null;
                         gameState.isHost = false;
