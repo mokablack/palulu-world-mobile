@@ -1196,9 +1196,17 @@ API Key / Project ID / Database URL を取得して入力
                 gameState.currentPlayerIndex = saved.currentPlayerIndex;
                 if (saved.nailTraps !== undefined) gameState.nailTraps = saved.nailTraps;
                 if (saved.snakeTraps !== undefined) gameState.snakeTraps = saved.snakeTraps;
+                if (saved.board !== undefined) gameState.board = saved.board;
                 renderBoard();
                 updateStatus();
                 updateDiceInteractivity();
+                // ラッキーナンバー後退通知: 自分のターンでなければダイアログ表示
+                if (saved.luckyNumberBack !== undefined) {
+                    const isMyTurn = gameState.players[gameState.currentPlayerIndex]?.id === gameState.playerId;
+                    if (!isMyTurn) {
+                        showModal('info', `${saved.luckyNumberBack}マス後退した！`, null, 'ラッキーナンバー');
+                    }
+                }
             });
 
             // ゲーム終了検知
@@ -1257,7 +1265,8 @@ API Key / Project ID / Database URL を取得して入力
                 players: gameState.players,
                 currentPlayerIndex: gameState.currentPlayerIndex,
                 nailTraps: gameState.nailTraps || {},
-                snakeTraps: gameState.snakeTraps || {}
+                snakeTraps: gameState.snakeTraps || {},
+                board: gameState.board
             };
             roomRef.child('gameSnapshot').set(JSON.stringify(snap));
         }
@@ -3638,6 +3647,21 @@ API Key / Project ID / Database URL を取得して入力
                 });
                 renderBoard();
                 updateStatus();
+                // オンラインモード: 後退通知を他プレイヤーに同期
+                if (gameState.playMode === 'online') {
+                    const roomRef = gameState.firebaseRefs.roomRef;
+                    if (roomRef) {
+                        const snap = {
+                            players: gameState.players,
+                            currentPlayerIndex: gameState.currentPlayerIndex,
+                            nailTraps: gameState.nailTraps || {},
+                            snakeTraps: gameState.snakeTraps || {},
+                            board: gameState.board,
+                            luckyNumberBack: num
+                        };
+                        roomRef.child('gameSnapshot').set(JSON.stringify(snap));
+                    }
+                }
                 showModal('info', `他の全員が${num}マス後退した！`, () => nextTurn(), 'ラッキーナンバー');
             } else {
                 // ふーん（何も起きない）
