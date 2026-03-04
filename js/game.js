@@ -1060,7 +1060,7 @@
                     [playersForGame[i], playersForGame[j]] = [playersForGame[j], playersForGame[i]];
                 }
 
-                const initialSnap = { players: playersForGame, currentPlayerIndex: 0 };
+                const initialSnap = { players: playersForGame, currentPlayerIndex: 0, nailTraps: {}, snakeTraps: {} };
                 roomRef.update({
                     status: 'started',
                     boardData: JSON.stringify(gameState.board),
@@ -1194,6 +1194,8 @@ API Key / Project ID / Database URL を取得して入力
                 // 常にリモートの状態を適用する（isRollingがロール中の上書きを防ぐ）
                 gameState.players = saved.players;
                 gameState.currentPlayerIndex = saved.currentPlayerIndex;
+                if (saved.nailTraps !== undefined) gameState.nailTraps = saved.nailTraps;
+                if (saved.snakeTraps !== undefined) gameState.snakeTraps = saved.snakeTraps;
                 renderBoard();
                 updateStatus();
                 updateDiceInteractivity();
@@ -1251,7 +1253,12 @@ API Key / Project ID / Database URL を取得して入力
             if (gameState.playMode !== 'online') return;
             const roomRef = gameState.firebaseRefs.roomRef;
             if (!roomRef) return;
-            const snap = { players: gameState.players, currentPlayerIndex: gameState.currentPlayerIndex };
+            const snap = {
+                players: gameState.players,
+                currentPlayerIndex: gameState.currentPlayerIndex,
+                nailTraps: gameState.nailTraps || {},
+                snakeTraps: gameState.snakeTraps || {}
+            };
             roomRef.child('gameSnapshot').set(JSON.stringify(snap));
         }
 
@@ -3404,7 +3411,7 @@ API Key / Project ID / Database URL を取得して入力
             renderBoard();
             updateStatus();
 
-            const nextSnap = { players: gameState.players, currentPlayerIndex: gameState.currentPlayerIndex };
+            const nextSnap = { players: gameState.players, currentPlayerIndex: gameState.currentPlayerIndex, nailTraps: {}, snakeTraps: {} };
             gameState.firebaseRefs.roomRef.update({
                 winner: null,
                 status: 'started',
