@@ -2891,6 +2891,11 @@ API Key / Project ID / Database URL を取得して入力
                     if (!gameState.winShown) {
                         gameState.winShown = true;
                         const ranked = gameState.players.slice().sort((a, b) => b.position - a.position);
+                        if (gameState.playMode === 'online' && gameState.firebaseRefs.roomRef) {
+                            syncGameStateToFirebase();
+                            gameState.firebaseRefs.roomRef.child('winner').set({ name: ranked[0].name });
+                            gameState.firebaseRefs.roomRef.child('status').set('finished');
+                        }
                         showModal('win', buildResultText(ranked[0].name), '');
                     }
                 }, eventEffect.eventTitle);
