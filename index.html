@@ -206,6 +206,16 @@
     <!-- プレイヤーリスト トグルボタン -->
     <button id="playerListToggle" class="player-list-toggle hidden" data-action="togglePlayerList" aria-label="プレイヤー一覧">👥</button>
 
+    <!-- ゲームログ パネル -->
+    <div id="gameLogPanel" class="game-log-panel hidden">
+        <div class="game-log-header">📋 ゲームログ</div>
+        <div id="gameLogList" class="game-log-list"></div>
+    </div>
+    <!-- ゲームログ オーバーレイ -->
+    <div id="gameLogOverlay" class="game-log-overlay hidden" data-action="toggleGameLog"></div>
+    <!-- ゲームログ トグルボタン -->
+    <button id="gameLogToggle" class="game-log-toggle hidden" data-action="toggleGameLog" aria-label="ゲームログ">📋</button>
+
     <!-- Firebase SDK (オンラインマルチプレイ用) -->
     <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/11.6.0/firebase-auth-compat.js"></script>

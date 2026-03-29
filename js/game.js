@@ -106,7 +106,8 @@
             sakasamaActive: false,
             winShown: false,
             nailTraps: {},    // { [tileIndex]: placingPlayerIndex }
-            snakeTraps: {}    // { [tileIndex]: { targetTileIndex, colorIndex, playerIndex } }
+            snakeTraps: {},   // { [tileIndex]: { targetTileIndex, colorIndex, playerIndex } }
+            gameLog: []       // ゲームログエントリ（最新20件）
         };
         
         // ========== 初期化 ==========
@@ -799,6 +800,12 @@
                 if (overlay) overlay.classList.add('hidden');
                 const toggle = document.getElementById('playerListToggle');
                 if (toggle) toggle.classList.add('hidden');
+                const logToggle = document.getElementById('gameLogToggle');
+                if (logToggle) logToggle.classList.add('hidden');
+                const logPanel = document.getElementById('gameLogPanel');
+                if (logPanel) { logPanel.classList.remove('open'); logPanel.classList.add('hidden'); }
+                const logOverlay = document.getElementById('gameLogOverlay');
+                if (logOverlay) logOverlay.classList.add('hidden');
             } else {
                 const panel = document.getElementById('playerListPanel');
                 const toggle = document.getElementById('playerListToggle');
@@ -842,6 +849,7 @@
             gameState.winShown = false;
             gameState.nailTraps = {};
             gameState.snakeTraps = {};
+            gameState.gameLog = [];
             gameState.players = [{
                 name: 'プレイヤー',
                 position: 0,
@@ -855,15 +863,19 @@
             document.getElementById('playerListToggle').classList.add('hidden');
             document.getElementById('playerListOverlay').classList.add('hidden');
             document.getElementById('playerListPanel').classList.remove('open');
+            document.getElementById('gameLogToggle').classList.remove('hidden');
+            document.getElementById('gameLogPanel').classList.remove('hidden');
+            renderGameLog();
             updateStatus();
         }
-        
+
         function startLocalMulti() {
             const count = parseInt(document.getElementById('playerCount').value);
             gameState.playMode = 'local';
             gameState.winShown = false;
             gameState.nailTraps = {};
             gameState.snakeTraps = {};
+            gameState.gameLog = [];
             gameState.players = [];
 
             for (let i = 0; i < count; i++) {
@@ -889,9 +901,13 @@
             document.getElementById('playerListToggle').classList.remove('hidden');
             document.getElementById('playerListPanel').classList.remove('open');
             document.getElementById('playerListOverlay').classList.add('hidden');
+            document.getElementById('gameLogToggle').classList.remove('hidden');
+            document.getElementById('gameLogPanel').classList.remove('hidden');
+            renderGameLog();
             updateStatus();
         }
-        
+
+
         // ========== オンラインマルチ (Firebase実装) ==========
         async function createOnlineRoom() {
             const hostName = document.getElementById('hostPlayerName').value.trim() || 'ホスト';
@@ -1186,8 +1202,12 @@ API Key / Project ID / Database URL を取得して入力
                 gameState.playMode = 'online';
                 gameState.localPlayerIndex = gameState.players.findIndex(p => p.id === gameState.playerId);
                 gameState.winShown = false;
+                if (saved.gameLog !== undefined) gameState.gameLog = saved.gameLog;
 
                 switchMode('play');
+                document.getElementById('gameLogToggle').classList.remove('hidden');
+                document.getElementById('gameLogPanel').classList.remove('hidden');
+                renderGameLog();
                 updateStatus();
                 updateDiceInteractivity();
                 listenForGameStateChanges();
@@ -1214,6 +1234,7 @@ API Key / Project ID / Database URL を取得して入力
                 if (saved.nailTraps !== undefined) gameState.nailTraps = saved.nailTraps;
                 if (saved.snakeTraps !== undefined) gameState.snakeTraps = saved.snakeTraps;
                 if (saved.board !== undefined) gameState.board = saved.board;
+                if (saved.gameLog !== undefined) { gameState.gameLog = saved.gameLog; renderGameLog(); }
                 renderBoard();
                 updateStatus();
                 updateDiceInteractivity();
@@ -1291,7 +1312,8 @@ API Key / Project ID / Database URL を取得して入力
                 currentPlayerIndex: gameState.currentPlayerIndex,
                 nailTraps: gameState.nailTraps || {},
                 snakeTraps: gameState.snakeTraps || {},
-                board: gameState.board
+                board: gameState.board,
+                gameLog: gameState.gameLog || []
             };
             roomRef.child('gameSnapshot').set(JSON.stringify(snap));
         }
@@ -1335,6 +1357,7 @@ API Key / Project ID / Database URL を取得して入力
                 const skipMsg = currentPlayer.skipTurns > 0
                     ? `あと${currentPlayer.skipTurns}回休みが残っています`
                     : '休みが終わりました';
+                addLog(`${currentPlayer.name}: 💤 休み`);
                 nextTurn();
                 showModal('info', skipMsg);
                 return;
@@ -1430,6 +1453,8 @@ API Key / Project ID / Database URL を取得して入力
             player.items.splice(itemIndex, 1);
             updateStatus();
             closeModal();
+
+            addLog(`${player.name}: ${itemLabel(itemId)} を使用`);
 
             switch (itemId) {
                 case 'boots':
@@ -1713,6 +1738,7 @@ API Key / Project ID / Database URL を取得して入力
                 dice.textContent = result;
                 dice.classList.remove('rolling');
                 gameState.isRolling = false;
+                if (rollingPlayer) addLog(`${rollingPlayer.name}: 🎲 ${result}`);
                 promptSakasamaOrMove(result);
             }, 500);
         }
@@ -1840,6 +1866,7 @@ API Key / Project ID / Database URL を取得して入力
             }
             if (!gameState.winShown) {
                 gameState.winShown = true;
+                addLog(`🏆 ${announced.name} がゴールした！`);
                 showModal('win', buildResultText(announced.name), babelNote);
             }
         }
@@ -2108,6 +2135,12 @@ API Key / Project ID / Database URL を取得して入力
         }
 
         function applyMoveEffect(moveValue) {
+            const movingPlayer = gameState.players[gameState.currentPlayerIndex];
+            if (movingPlayer) {
+                const arrow = moveValue > 0 ? '⬆️' : '⬇️';
+                const dir = moveValue > 0 ? '進む' : '戻る';
+                addLog(`${movingPlayer.name}: ${arrow} ${Math.abs(moveValue)}マス${dir}`);
+            }
             showModal('info',
                 moveValue > 0 ? `${Math.abs(moveValue)}マス進む！` : `${Math.abs(moveValue)}マス戻る...`,
                 () => {
@@ -2773,6 +2806,8 @@ API Key / Project ID / Database URL を取得して入力
                 return;
             }
 
+            if (player) addLog(`${player.name} → ${tile.name}`);
+
             if (!tile.effect) {
                 nextTurn();
                 return;
@@ -2863,6 +2898,10 @@ API Key / Project ID / Database URL を取得して入力
             let callback = () => nextTurn();
             let eventText = eventEffect.eventText;
 
+            if (player && eventEffect.eventTitle) {
+                addLog(`${player.name}: 📅 ${eventEffect.eventTitle}`);
+            }
+
             // 商人：特殊UIなので早期リターン
             if (eventEffect.eventEffect === 'merchant') {
                 showMerchantDialog();
@@ -2949,6 +2988,7 @@ API Key / Project ID / Database URL を取得して入力
                 if (enabledItemsList.length > 0) {
                     const randomItem = enabledItemsList[Math.floor(Math.random() * enabledItemsList.length)];
                     player.items.push(randomItem.id);
+                    addLog(`${player.name}: アイテム ${itemLabel(randomItem.id)} 入手！`);
                     eventText += `\n${randomItem.icon} ${randomItem.name} を手に入れた！`;
                     if (randomItem.id === 'babel') {
                         callback = () => { updateStatus(); promptBabelTarget(); };
@@ -3408,6 +3448,37 @@ API Key / Project ID / Database URL を取得して入力
             }
         }
         
+        // ========== ゲームログ ==========
+
+        function addLog(message) {
+            if (!gameState.gameLog) gameState.gameLog = [];
+            gameState.gameLog.push(message);
+            if (gameState.gameLog.length > 20) {
+                gameState.gameLog = gameState.gameLog.slice(-20);
+            }
+            renderGameLog();
+        }
+
+        function renderGameLog() {
+            const listEl = document.getElementById('gameLogList');
+            if (!listEl) return;
+            const entries = gameState.gameLog || [];
+            listEl.innerHTML = entries.length === 0
+                ? '<div class="game-log-entry" style="color:#64748b;">まだログはありません</div>'
+                : entries.slice().reverse().map(msg =>
+                    `<div class="game-log-entry">${escapeHtml(msg)}</div>`
+                  ).join('');
+        }
+
+        function toggleGameLog() {
+            const panel = document.getElementById('gameLogPanel');
+            const overlay = document.getElementById('gameLogOverlay');
+            if (!panel) return;
+            const isOpen = panel.classList.contains('open');
+            panel.classList.toggle('open', !isOpen);
+            if (overlay) overlay.classList.toggle('hidden', isOpen);
+        }
+
         // ========== モーダル ==========
         function buildResultText(announcedName) {
             const ranked = gameState.players.slice().sort((a, b) => b.position - a.position);
@@ -3566,6 +3637,10 @@ API Key / Project ID / Database URL を取得して入力
                     clearInterval(window.selfAppealTimerId);
                     window.selfAppealTimerId = null;
                     if (gameState.playMode === 'online') {
+                        content.innerHTML = `
+                            <div class="modal-title">📣 アピールタイム終了</div>
+                            <div class="modal-text">投票集計中...</div>
+                        `;
                         startOnlineSelfAppealVoting(0, []);
                     } else {
                         startSelfAppealVoting(0, []);
@@ -3749,6 +3824,7 @@ API Key / Project ID / Database URL を取得して入力
         function handleSelfAppealVote(isYes) {
             const newVotes = [...window.selfAppealCurrentVotes, isYes];
             if (gameState.playMode === 'online') {
+                closeModal();
                 startOnlineSelfAppealVoting(window.selfAppealVoterArrayIndex + 1, newVotes);
             } else {
                 startSelfAppealVoting(window.selfAppealVoterArrayIndex + 1, newVotes);
@@ -3778,7 +3854,11 @@ API Key / Project ID / Database URL を取得して入力
 
             renderBoard();
             updateStatus();
-            showModal('info', resultText, () => nextTurn(), '審査結果');
+            if (yesCount > noCount && currentPlayer.position >= gameState.board.length - 1) {
+                showModal('info', resultText, () => triggerWin(), '審査結果');
+            } else {
+                showModal('info', resultText, () => nextTurn(), '審査結果');
+            }
         }
 
         // ========== 怒らせたら10進む ==========
@@ -3939,7 +4019,11 @@ API Key / Project ID / Database URL を取得して入力
                             tilePlayer.position = Math.min(gameState.board.length - 1, tilePlayer.position + 10);
                             renderBoard();
                             updateStatus();
-                            showModal('info', `${escapeHtml(tilePlayer.name)} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+                            if (tilePlayer.position >= gameState.board.length - 1) {
+                                showModal('info', `${escapeHtml(tilePlayer.name)} は10マス進んだ！ゴールに到達！`, () => triggerWin(), '怒らせた！');
+                            } else {
+                                showModal('info', `${escapeHtml(tilePlayer.name)} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+                            }
                         } else {
                             tilePlayer.position = Math.max(0, tilePlayer.position - action.steps);
                             renderBoard();
@@ -4067,7 +4151,11 @@ API Key / Project ID / Database URL を取得して入力
                 renderBoard();
                 updateStatus();
                 document.getElementById('modal').classList.remove('show');
-                showModal('info', `${currentPlayer.name} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+                if (currentPlayer.position >= gameState.board.length - 1) {
+                    showModal('info', `${currentPlayer.name} は10マス進んだ！ゴールに到達！`, () => triggerWin(), '怒らせた！');
+                } else {
+                    showModal('info', `${currentPlayer.name} は10マス進んだ！`, () => nextTurn(), '怒らせた！');
+                }
             }
         }
 
@@ -4230,6 +4318,7 @@ const ACTION_HANDLERS = {
     startOnlineGame: () => startOnlineGame(),
     leaveRoom: () => leaveRoom(),
     togglePlayerList: () => togglePlayerList(),
+    toggleGameLog: () => toggleGameLog(),
     rollDice: () => rollDice(),
     exitGame: () => exitGame(),
     closeModal: () => closeModal(),
